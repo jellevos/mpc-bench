@@ -8,17 +8,37 @@ struct Message {
     contents: Vec<u8>,
 }
 
-struct Mailbox {
+#[derive(Debug)]
+struct Statistics {
+    name: Option<String>,
+    sent_bytes: Vec<usize>,
+}
+
+struct Party {
+    id: usize,
+    name: Option<String>,
+    senders: Vec<Sender<Message>>,
+    sent_bytes: Vec<usize>,
     receiver: Receiver<Message>,
     buffer: HashMap<usize, Vec<u8>>,
 }
 
-impl Mailbox {
-    fn new(receiver: Receiver<Message>) -> Self {
-        Mailbox {
+impl Party {
+    fn new(id: usize, receiver: Receiver<Message>, senders: Vec<Sender<Message>>) -> Self {
+        let sender_count = senders.len();
+
+        Party {
+            id,
+            name: None,
+            senders,
+            sent_bytes: vec![0; sender_count],
             receiver,
             buffer: HashMap::new(),
         }
+    }
+
+    fn set_name(&mut self, name: String) {
+        self.name = Some(name);
     }
 
     fn receive(&mut self, from_id: &usize) -> Vec<u8> {
@@ -34,24 +54,6 @@ impl Mailbox {
 
                 self.buffer.insert(message.from_id, message.contents);
             }
-        }
-    }
-}
-
-struct Contacts {
-    id: usize,
-    senders: Vec<Sender<Message>>,
-    sent_bytes: Vec<usize>,
-}
-
-impl Contacts {
-    fn new(id: usize, senders: Vec<Sender<Message>>) -> Self {
-        let sender_count = senders.len();
-
-        Contacts {
-            id,
-            senders,
-            sent_bytes: vec![0; sender_count],
         }
     }
 
@@ -81,14 +83,17 @@ impl Contacts {
         }
     }
 
-    fn get_statistics(self) -> Vec<usize> {
-        self.sent_bytes
+    fn get_statistics(self) -> Statistics {
+        Statistics {
+            name: self.name,
+            sent_bytes: self.sent_bytes,
+        }
     }
 }
 
-trait Protocol<O: 'static + Debug + std::marker::Send> {
+trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
 
-    fn evaluate(n_parties: usize) {
+    fn evaluate(n_parties: usize, mut inputs: Vec<I>) {
         let mut receivers = vec![];
         let mut senders: Vec<Vec<Sender<_>>> = (0..n_parties).map(|_| vec![]).collect();
 
@@ -102,38 +107,46 @@ trait Protocol<O: 'static + Debug + std::marker::Send> {
             }
         }
 
-        let handles: Vec<JoinHandle<_>> = (0..n_parties).zip(receivers.drain(0..n_parties)).zip(senders.drain(0..n_parties))
-            .map(|((i, r), ss)| spawn(move ||
-                Self::run_party(i, n_parties, Mailbox::new(r), Contacts::new(i, ss))))
+        let handles: Vec<JoinHandle<_>> = (0..n_parties)
+            .zip(receivers.drain(0..n_parties))
+            .zip(senders.drain(0..n_parties))
+            .zip(inputs.drain(0..n_parties))
+            .map(|(((i, r), ss), input)| spawn(move ||
+                Self::run_party(i, n_parties, Party::new(i, r, ss), input)))
             .collect();
 
-        let outputs: Vec<(Vec<usize>, O)> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let outputs: Vec<(Statistics, O)> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
         println!("{:?}", outputs);
     }
 
-    fn run_party(id: usize, n_parties: usize, mailbox: Mailbox, contacts: Contacts) -> (Vec<usize>, O);
+    fn run_party(id: usize, n_parties: usize, this_party: Party, input: I) -> (Statistics, O);
 
 }
 
 struct Example;
 
-impl Protocol<usize> for Example {
-    fn run_party(id: usize, n_parties: usize, mut mailbox: Mailbox, mut contacts: Contacts) -> (Vec<usize>, usize) {
+impl Protocol<usize, usize> for Example {
+    fn run_party(id: usize, n_parties: usize, mut this_party: Party, input: usize) -> (Statistics, usize) {
+        match id {
+            0 => this_party.set_name(String::from("Leader")),
+            _ => this_party.set_name(format!("Assistant {}", id))
+        };
+
         println!("Hi! I am {}/{}", id, n_parties - 1);
 
         for i in (id + 1)..n_parties {
-            contacts.send(&vec![id as u8], &i);
+            this_party.send(&vec![id as u8], &i);
         }
 
         for j in 0..id {
-            println!("I am {}/{} and I received a message from {}", id, n_parties - 1, mailbox.receive(&j)[0]);
+            println!("I am {}/{} and I received a message from {}", id, n_parties - 1, this_party.receive(&j)[0]);
         }
 
-        (contacts.get_statistics(), id + 10)
+        (this_party.get_statistics(), id + input)
     }
 }
 
 fn main() {
-    Example::evaluate(5);
+    Example::evaluate(5, vec![10; 5]);
 }
