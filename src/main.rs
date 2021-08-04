@@ -2,6 +2,7 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::{spawn, JoinHandle};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::time::{Instant, Duration};
 
 struct Message {
     from_id: usize,
@@ -9,31 +10,18 @@ struct Message {
 }
 
 #[derive(Debug)]
-struct Statistics {
+struct PartyStats {
     name: Option<String>,
     sent_bytes: Vec<usize>,
+    measured_durations: Vec<(String, Duration)>,
 }
 
-struct Party {
-    id: usize,
-    name: Option<String>,
-    senders: Vec<Sender<Message>>,
-    sent_bytes: Vec<usize>,
-    receiver: Receiver<Message>,
-    buffer: HashMap<usize, Vec<u8>>,
-}
-
-impl Party {
-    fn new(id: usize, receiver: Receiver<Message>, senders: Vec<Sender<Message>>) -> Self {
-        let sender_count = senders.len();
-
-        Party {
-            id,
+impl PartyStats {
+    fn new(sender_count: usize) -> Self {
+        PartyStats {
             name: None,
-            senders,
             sent_bytes: vec![0; sender_count],
-            receiver,
-            buffer: HashMap::new(),
+            measured_durations: vec![],
         }
     }
 
@@ -41,7 +29,70 @@ impl Party {
         self.name = Some(name);
     }
 
-    fn receive(&mut self, from_id: &usize) -> Vec<u8> {
+    fn add_sent_bytes(&mut self, byte_count: usize, to_id: &usize) {
+        self.sent_bytes[*to_id] += byte_count;
+    }
+
+    fn write_duration(&mut self, name: String, duration: Duration) {
+        self.measured_durations.push((name, duration));
+    }
+}
+
+struct Timer {
+    name: String,
+    start_time: Instant,
+}
+
+impl Timer {
+    fn new(name: String) -> Self {
+        Timer {
+            name,
+            start_time: Instant::now(),
+        }
+    }
+
+    fn stop(&self) -> (String, Duration) {
+        (self.name.clone(), self.start_time.elapsed())
+    }
+}
+
+struct Party {
+    id: usize,
+    name: Option<String>,
+    senders: Vec<Sender<Message>>,
+    receiver: Receiver<Message>,
+    buffer: HashMap<usize, Vec<u8>>,
+    stats: PartyStats,
+}
+
+impl Party {
+    pub fn new(id: usize, receiver: Receiver<Message>, senders: Vec<Sender<Message>>) -> Self {
+        let sender_count = senders.len();
+
+        Party {
+            id,
+            name: None,
+            senders,
+            receiver,
+            buffer: HashMap::new(),
+            stats: PartyStats::new(sender_count),
+        }
+    }
+
+    pub fn set_name(&mut self, name: String) {
+        self.stats.set_name(name);
+    }
+
+    pub fn create_timer(&self, name: &str) -> Timer {
+        Timer::new(String::from(name))
+    }
+
+    pub fn stop_timer(&mut self, timer: Timer) {
+        let (name, duration) = timer.stop();
+        self.stats.write_duration(name, duration);
+    }
+
+    pub fn receive(&mut self, from_id: &usize) -> Vec<u8> {
         let contents = self.buffer.remove(from_id);
         match contents {
             Some(c) => c,
@@ -57,7 +108,7 @@ impl Party {
         }
     }
 
-    fn send(&mut self, message: &Vec<u8>, to_party: &usize) {
+    pub fn send(&mut self, message: &Vec<u8>, to_party: &usize) {
         let byte_count = message.len();
 
         self.senders[*to_party].send(Message {
@@ -65,10 +116,10 @@ impl Party {
             contents: message.to_vec(),
         }).unwrap();
 
-        self.sent_bytes[*to_party] += byte_count;
+        self.stats.add_sent_bytes(byte_count, to_party);
     }
 
-    fn broadcast(&mut self, message: &Vec<u8>) {
+    pub fn broadcast(&mut self, message: &Vec<u8>) {
         let byte_count = message.len();
 
         for sender in &self.senders {
@@ -78,16 +129,13 @@ impl Party {
             }).unwrap();
         }
 
-        for i in 0..self.sent_bytes.len() {
-            self.sent_bytes[i] += byte_count;
+        for i in 0..self.senders.len() {
+            self.stats.add_sent_bytes(byte_count, &i);
         }
     }
 
-    fn get_statistics(self) -> Statistics {
-        Statistics {
-            name: self.name,
-            sent_bytes: self.sent_bytes,
-        }
+    pub fn get_statistics(self) -> PartyStats {
+        self.stats
     }
 }
 
@@ -115,19 +163,19 @@ trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker:
                 Self::run_party(i, n_parties, Party::new(i, r, ss), input)))
             .collect();
 
-        let outputs: Vec<(Statistics, O)> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let outputs: Vec<(PartyStats, O)> = handles.into_iter().map(|h| h.join().unwrap()).collect();
 
         println!("{:?}", outputs);
     }
 
-    fn run_party(id: usize, n_parties: usize, this_party: Party, input: I) -> (Statistics, O);
+    fn run_party(id: usize, n_parties: usize, this_party: Party, input: I) -> (PartyStats, O);
 
 }
 
 struct Example;
 
 impl Protocol<usize, usize> for Example {
-    fn run_party(id: usize, n_parties: usize, mut this_party: Party, input: usize) -> (Statistics, usize) {
+    fn run_party(id: usize, n_parties: usize, mut this_party: Party, input: usize) -> (PartyStats, usize) {
         match id {
             0 => this_party.set_name(String::from("Leader")),
             _ => this_party.set_name(format!("Assistant {}", id))
@@ -135,9 +183,11 @@ impl Protocol<usize, usize> for Example {
 
         println!("Hi! I am {}/{}", id, n_parties - 1);
 
+        let sending_timer = this_party.create_timer("sending");
         for i in (id + 1)..n_parties {
             this_party.send(&vec![id as u8], &i);
         }
+        this_party.stop_timer(sending_timer);
 
         for j in 0..id {
             println!("I am {}/{} and I received a message from {}", id, n_parties - 1, this_party.receive(&j)[0]);
