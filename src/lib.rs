@@ -1,11 +1,11 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs, unused_imports)]
 
-use std::sync::mpsc::{channel, Sender, Receiver};
-use std::thread::spawn;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::time::{Instant, Duration};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread::spawn;
+use std::time::{Duration, Instant};
 
 /// A message that is sent from the party with id `from_id` to another, containing a `Vec` of bytes.
 struct Message {
@@ -111,11 +111,11 @@ impl Party {
                 let message = self.receiver.recv().unwrap();
 
                 if message.from_id == *from_id {
-                    break message.contents
+                    break message.contents;
                 }
 
                 self.buffer.insert(message.from_id, message.contents);
-            }
+            },
         }
     }
 
@@ -124,10 +124,12 @@ impl Party {
     pub fn send(&mut self, message: &[u8], to_id: &usize) {
         let byte_count = message.len();
 
-        self.senders[*to_id].send(Message {
-            from_id: self.id,
-            contents: message.to_vec(),
-        }).unwrap();
+        self.senders[*to_id]
+            .send(Message {
+                from_id: self.id,
+                contents: message.to_vec(),
+            })
+            .unwrap();
 
         self.stats.add_sent_bytes(byte_count, to_id);
     }
@@ -138,10 +140,12 @@ impl Party {
         let byte_count = message.len();
 
         for sender in &self.senders {
-            sender.send(Message {
-                from_id: self.id,
-                contents: message.to_vec(),
-            }).unwrap();
+            sender
+                .send(Message {
+                    from_id: self.id,
+                    contents: message.to_vec(),
+                })
+                .unwrap();
         }
 
         for i in 0..self.senders.len() {
@@ -158,7 +162,6 @@ impl Party {
 /// A multi-party computation protocol, where each party takes in an input of type `I` and computes
 /// an output of type `O`. The code a party runs should be implemented in the `run_party` method.
 pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
-
     /// Evaluates the protocol for a given number of parties `n_parties`, each with the input
     /// provided by the `inputs` field.
     fn evaluate(n_parties: usize, mut inputs: Vec<I>) -> Vec<(PartyStats, O)> {
@@ -179,28 +182,33 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
             .zip(receivers.drain(0..n_parties))
             .zip(senders.drain(0..n_parties))
             .zip(inputs.drain(0..n_parties))
-            .map(|(((i, r), ss), input)| spawn(move ||
-                Self::run_party(i, n_parties, Party::new(i, r, ss), input)));
+            .map(|(((i, r), ss), input)| {
+                spawn(move || Self::run_party(i, n_parties, Party::new(i, r, ss), input))
+            });
 
         handles.map(|h| h.join().unwrap()).collect()
     }
 
     /// Code to run one party in the protocol.
     fn run_party(id: usize, n_parties: usize, this_party: Party, input: I) -> (PartyStats, O);
-
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Protocol, Party, PartyStats};
+    use crate::{Party, PartyStats, Protocol};
 
     struct Example;
 
     impl Protocol<usize, usize> for Example {
-        fn run_party(id: usize, n_parties: usize, mut this_party: Party, input: usize) -> (PartyStats, usize) {
+        fn run_party(
+            id: usize,
+            n_parties: usize,
+            mut this_party: Party,
+            input: usize,
+        ) -> (PartyStats, usize) {
             match id {
                 0 => this_party.set_name(String::from("Leader")),
-                _ => this_party.set_name(format!("Assistant {}", id))
+                _ => this_party.set_name(format!("Assistant {}", id)),
             };
 
             println!("Hi! I am {}/{}", id, n_parties - 1);
@@ -212,7 +220,12 @@ mod tests {
             this_party.stop_timer(sending_timer);
 
             for j in 0..id {
-                println!("I am {}/{} and I received a message from {}", id, n_parties - 1, this_party.receive(&j)[0]);
+                println!(
+                    "I am {}/{} and I received a message from {}",
+                    id,
+                    n_parties - 1,
+                    this_party.receive(&j)[0]
+                );
             }
 
             (this_party.get_stats(), id + input)
