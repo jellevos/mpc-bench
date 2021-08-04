@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "protocol_workbench"
+name = "protobench"
 version = "0.1.0"

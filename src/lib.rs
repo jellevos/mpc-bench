@@ -10,7 +10,7 @@ struct Message {
 }
 
 #[derive(Debug)]
-struct PartyStats {
+pub struct PartyStats {
     name: Option<String>,
     sent_bytes: Vec<usize>,
     measured_durations: Vec<(String, Duration)>,
@@ -38,7 +38,7 @@ impl PartyStats {
     }
 }
 
-struct Timer {
+pub struct Timer {
     name: String,
     start_time: Instant,
 }
@@ -56,9 +56,8 @@ impl Timer {
     }
 }
 
-struct Party {
+pub struct Party {
     id: usize,
-    name: Option<String>,
     senders: Vec<Sender<Message>>,
     receiver: Receiver<Message>,
     buffer: HashMap<usize, Vec<u8>>,
@@ -66,12 +65,11 @@ struct Party {
 }
 
 impl Party {
-    pub fn new(id: usize, receiver: Receiver<Message>, senders: Vec<Sender<Message>>) -> Self {
+    fn new(id: usize, receiver: Receiver<Message>, senders: Vec<Sender<Message>>) -> Self {
         let sender_count = senders.len();
 
         Party {
             id,
-            name: None,
             senders,
             receiver,
             buffer: HashMap::new(),
@@ -139,7 +137,7 @@ impl Party {
     }
 }
 
-trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
+pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
 
     fn evaluate(n_parties: usize, mut inputs: Vec<I>) {
         let mut receivers = vec![];
@@ -172,31 +170,37 @@ trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker:
 
 }
 
-struct Example;
+#[cfg(test)]
+mod tests {
+    use crate::{Protocol, Party, PartyStats};
 
-impl Protocol<usize, usize> for Example {
-    fn run_party(id: usize, n_parties: usize, mut this_party: Party, input: usize) -> (PartyStats, usize) {
-        match id {
-            0 => this_party.set_name(String::from("Leader")),
-            _ => this_party.set_name(format!("Assistant {}", id))
-        };
+    struct Example;
 
-        println!("Hi! I am {}/{}", id, n_parties - 1);
+    impl Protocol<usize, usize> for Example {
+        fn run_party(id: usize, n_parties: usize, mut this_party: Party, input: usize) -> (PartyStats, usize) {
+            match id {
+                0 => this_party.set_name(String::from("Leader")),
+                _ => this_party.set_name(format!("Assistant {}", id))
+            };
 
-        let sending_timer = this_party.create_timer("sending");
-        for i in (id + 1)..n_parties {
-            this_party.send(&vec![id as u8], &i);
+            println!("Hi! I am {}/{}", id, n_parties - 1);
+
+            let sending_timer = this_party.create_timer("sending");
+            for i in (id + 1)..n_parties {
+                this_party.send(&vec![id as u8], &i);
+            }
+            this_party.stop_timer(sending_timer);
+
+            for j in 0..id {
+                println!("I am {}/{} and I received a message from {}", id, n_parties - 1, this_party.receive(&j)[0]);
+            }
+
+            (this_party.get_statistics(), id + input)
         }
-        this_party.stop_timer(sending_timer);
-
-        for j in 0..id {
-            println!("I am {}/{} and I received a message from {}", id, n_parties - 1, this_party.receive(&j)[0]);
-        }
-
-        (this_party.get_statistics(), id + input)
     }
-}
 
-fn main() {
-    Example::evaluate(5, vec![10; 5]);
+    #[test]
+    fn it_works() {
+        Example::evaluate(5, vec![10; 5]);
+    }
 }
