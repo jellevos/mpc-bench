@@ -1,5 +1,5 @@
 [package]
-name = "protobench"
+name = "mpc-bench"
 description = "Multi-party computation experimentation library"
 version = "0.0.1"
 authors = ["Jelle Vos <J.V.Vos@tudelft.nl>"]

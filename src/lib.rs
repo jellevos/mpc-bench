@@ -7,11 +7,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::time::{Instant, Duration};
 
+/// A message that is sent from the party with id `from_id` to another, containing a `Vec` of bytes.
 struct Message {
     from_id: usize,
     contents: Vec<u8>,
 }
 
+/// Statistics pertaining to one party, such as the number of bytes sent and the durations measured.
 #[derive(Debug)]
 pub struct PartyStats {
     name: Option<String>,
@@ -41,6 +43,7 @@ impl PartyStats {
     }
 }
 
+/// A `Timer` that starts measuring a duration upon creation, until it is stopped.
 pub struct Timer {
     name: String,
     start_time: Instant,
@@ -59,6 +62,8 @@ impl Timer {
     }
 }
 
+/// A `Party` that takes part in a protocol. The party has a unique `id` and is pre-loaded with
+/// communication channels to and from all the other parties. A party keeps track of its own stats.
 pub struct Party {
     id: usize,
     senders: Vec<Sender<Message>>,
@@ -80,19 +85,24 @@ impl Party {
         }
     }
 
+    /// Sets an actual name for a party to make the stats easier to interpret.
     pub fn set_name(&mut self, name: String) {
         self.stats.set_name(name);
     }
 
+    /// Creates a timer with the given `name` that starts running immediately.
     pub fn create_timer(&self, name: &str) -> Timer {
         Timer::new(String::from(name))
     }
 
+    /// Stops the `timer` and writes it measured duration to this party's statistics.
     pub fn stop_timer(&mut self, timer: Timer) {
         let (name, duration) = timer.stop();
         self.stats.write_duration(name, duration);
     }
 
+    /// Blocks until this party receives a message from the party with `from_id`. A message is a
+    /// vector of bytes `Vec<u8>`. This can be achieved for example using `bincode` serialization.
     pub fn receive(&mut self, from_id: &usize) -> Vec<u8> {
         let contents = self.buffer.remove(from_id);
         match contents {
@@ -109,17 +119,21 @@ impl Party {
         }
     }
 
-    pub fn send(&mut self, message: &Vec<u8>, to_party: &usize) {
+    /// Sends a vector of bytes to the party with `to_id` and keeps track of the number of bits sent
+    /// to this party.
+    pub fn send(&mut self, message: &Vec<u8>, to_id: &usize) {
         let byte_count = message.len();
 
-        self.senders[*to_party].send(Message {
+        self.senders[*to_id].send(Message {
             from_id: self.id,
             contents: message.to_vec(),
         }).unwrap();
 
-        self.stats.add_sent_bytes(byte_count, to_party);
+        self.stats.add_sent_bytes(byte_count, to_id);
     }
 
+    /// Broadcasts a message (a vector of bytes) to all parties and keeps track of the number of
+    /// bits sent.
     pub fn broadcast(&mut self, message: &Vec<u8>) {
         let byte_count = message.len();
 
@@ -135,13 +149,18 @@ impl Party {
         }
     }
 
+    /// Gets the collected statistics for this party.
     pub fn get_stats(self) -> PartyStats {
         self.stats
     }
 }
 
+/// A multi-party computation protocol, where each party takes in an input of type `I` and computes
+/// an output of type `O`. The code a party runs should be implemented in the `run_party` method.
 pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
 
+    /// Evaluates the protocol for a given number of parties `n_parties`, each with the input
+    /// provided by the `inputs` field.
     fn evaluate(n_parties: usize, mut inputs: Vec<I>) {
         let mut receivers = vec![];
         let mut senders: Vec<Vec<Sender<_>>> = (0..n_parties).map(|_| vec![]).collect();
@@ -169,6 +188,7 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
         println!("{:?}", outputs);
     }
 
+    /// Code to run one party in the protocol.
     fn run_party(id: usize, n_parties: usize, this_party: Party, input: I) -> (PartyStats, O);
 
 }
