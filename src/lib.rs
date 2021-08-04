@@ -2,7 +2,7 @@
 #![warn(missing_docs, unused_imports)]
 
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::thread::{spawn, JoinHandle};
+use std::thread::spawn;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::time::{Instant, Duration};
@@ -121,7 +121,7 @@ impl Party {
 
     /// Sends a vector of bytes to the party with `to_id` and keeps track of the number of bits sent
     /// to this party.
-    pub fn send(&mut self, message: &Vec<u8>, to_id: &usize) {
+    pub fn send(&mut self, message: &[u8], to_id: &usize) {
         let byte_count = message.len();
 
         self.senders[*to_id].send(Message {
@@ -134,7 +134,7 @@ impl Party {
 
     /// Broadcasts a message (a vector of bytes) to all parties and keeps track of the number of
     /// bits sent.
-    pub fn broadcast(&mut self, message: &Vec<u8>) {
+    pub fn broadcast(&mut self, message: &[u8]) {
         let byte_count = message.len();
 
         for sender in &self.senders {
@@ -161,7 +161,7 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
 
     /// Evaluates the protocol for a given number of parties `n_parties`, each with the input
     /// provided by the `inputs` field.
-    fn evaluate(n_parties: usize, mut inputs: Vec<I>) {
+    fn evaluate(n_parties: usize, mut inputs: Vec<I>) -> Vec<(PartyStats, O)> {
         let mut receivers = vec![];
         let mut senders: Vec<Vec<Sender<_>>> = (0..n_parties).map(|_| vec![]).collect();
 
@@ -170,22 +170,19 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
 
             receivers.push(receiver);
 
-            for j in 0..n_parties {
-                senders[j].push(sender.clone());
+            for sender_vec in senders.iter_mut() {
+                sender_vec.push(sender.clone());
             }
         }
 
-        let handles: Vec<JoinHandle<_>> = (0..n_parties)
+        let handles = (0..n_parties)
             .zip(receivers.drain(0..n_parties))
             .zip(senders.drain(0..n_parties))
             .zip(inputs.drain(0..n_parties))
             .map(|(((i, r), ss), input)| spawn(move ||
-                Self::run_party(i, n_parties, Party::new(i, r, ss), input)))
-            .collect();
+                Self::run_party(i, n_parties, Party::new(i, r, ss), input)));
 
-        let outputs: Vec<(PartyStats, O)> = handles.into_iter().map(|h| h.join().unwrap()).collect();
-
-        println!("{:?}", outputs);
+        handles.map(|h| h.join().unwrap()).collect()
     }
 
     /// Code to run one party in the protocol.
@@ -224,6 +221,12 @@ mod tests {
 
     #[test]
     fn it_works() {
-        Example::evaluate(5, vec![10; 5]);
+        let outputs = Example::evaluate(5, vec![10; 5]);
+
+        assert_eq!(outputs[0].1, 10);
+        assert_eq!(outputs[1].1, 11);
+        assert_eq!(outputs[2].1, 12);
+        assert_eq!(outputs[3].1, 13);
+        assert_eq!(outputs[4].1, 14);
     }
 }

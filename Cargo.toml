@@ -5,8 +5,8 @@ version = "0.0.1"
 authors = ["Jelle Vos <J.V.Vos@tudelft.nl>"]
 edition = "2018"
 license = "MIT"
-homepage = "https://github.com/jellevos/protobench"
-repository = "https://github.com/jellevos/protobench"
+homepage = "https://github.com/jellevos/mpc-bench"
+repository = "https://github.com/jellevos/mpc-bench"
 readme = "README.md"
 
 [dependencies]
