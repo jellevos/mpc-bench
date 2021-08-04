@@ -1,3 +1,6 @@
+#![doc = include_str!("../README.md")]
+#![warn(missing_docs, unused_imports)]
+
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::thread::{spawn, JoinHandle};
 use std::collections::HashMap;
@@ -132,7 +135,7 @@ impl Party {
         }
     }
 
-    pub fn get_statistics(self) -> PartyStats {
+    pub fn get_stats(self) -> PartyStats {
         self.stats
     }
 }
@@ -195,7 +198,7 @@ mod tests {
                 println!("I am {}/{} and I received a message from {}", id, n_parties - 1, this_party.receive(&j)[0]);
             }
 
-            (this_party.get_statistics(), id + input)
+            (this_party.get_stats(), id + input)
         }
     }
 
