@@ -161,10 +161,15 @@ impl Party {
 
 /// A multi-party computation protocol, where each party takes in an input of type `I` and computes
 /// an output of type `O`. The code a party runs should be implemented in the `run_party` method.
+/// The `Protocol` should implement the `Copy` trait, as the `run_party` method will be called with
+/// a fresh copy of the `Protocol` (and its parameters) for each invocation.
 pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
     /// Evaluates the protocol for a given number of parties `n_parties`, each with the input
     /// provided by the `inputs` field.
-    fn evaluate(n_parties: usize, mut inputs: Vec<I>) -> Vec<(PartyStats, O)> {
+    fn evaluate(self, n_parties: usize, mut inputs: Vec<I>) -> Vec<(PartyStats, O)>
+    where
+        Self: 'static + Copy + Send,
+    {
         let mut receivers = vec![];
         let mut senders: Vec<Vec<Sender<_>>> = (0..n_parties).map(|_| vec![]).collect();
 
@@ -183,24 +188,27 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
             .zip(senders.drain(0..n_parties))
             .zip(inputs.drain(0..n_parties))
             .map(|(((i, r), ss), input)| {
-                spawn(move || Self::run_party(i, n_parties, Party::new(i, r, ss), input))
+                spawn(move || Self::run_party(self, i, n_parties, Party::new(i, r, ss), input))
             });
 
         handles.map(|h| h.join().unwrap()).collect()
     }
 
-    /// Code to run one party in the protocol.
-    fn run_party(id: usize, n_parties: usize, this_party: Party, input: I) -> (PartyStats, O);
+    /// Code to run one party in the protocol. The party gets a new copy of this protocol.
+    fn run_party(self, id: usize, n_parties: usize, this_party: Party, input: I)
+        -> (PartyStats, O);
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{Party, PartyStats, Protocol};
 
+    #[derive(Copy, Clone)]
     struct Example;
 
     impl Protocol<usize, usize> for Example {
         fn run_party(
+            self,
             id: usize,
             n_parties: usize,
             mut this_party: Party,
@@ -234,7 +242,8 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let outputs = Example::evaluate(5, vec![10; 5]);
+        let example = Example;
+        let outputs = example.evaluate(5, vec![10; 5]);
 
         assert_eq!(outputs[0].1, 10);
         assert_eq!(outputs[1].1, 11);
