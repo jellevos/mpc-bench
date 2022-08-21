@@ -12,7 +12,11 @@ impl Party {
     /// Blocks until this party receives a message from the party with `from_id`. A message is a
     /// vector of bytes `Vec<u8>`. This can be achieved for example using `bincode` serialization.
     pub fn receive(&mut self, from_id: &usize) -> Vec<u8> {
-        debug_assert_ne!(*from_id, self.id, "`from_id = {}` may not be the same as `self.id = {}`", from_id, self.id);
+        debug_assert_ne!(
+            *from_id, self.id,
+            "`from_id = {}` may not be the same as `self.id = {}`",
+            from_id, self.id
+        );
 
         let reduced_id = if *from_id < self.id {
             *from_id
@@ -33,7 +37,9 @@ impl Party {
                 } else {
                     message.from_id - 1
                 };
-                self.buffer[message_reduced_id].add(message.contents).unwrap();
+                self.buffer[message_reduced_id]
+                    .add(message.contents)
+                    .unwrap();
             },
             _ => self.buffer[reduced_id].remove().unwrap(),
         }

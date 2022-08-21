@@ -1,10 +1,10 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs, unused_imports)]
 
+use comm::Message;
 use std::fmt::Debug;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
-use comm::Message;
 
 use queues::Queue;
 use stats::PartyStats;
@@ -52,7 +52,13 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
     where
         Self: 'static + Copy + Send,
     {
-        assert_eq!(n_parties, inputs.len(), "The number of parties was {} but only received {} inputs", n_parties, inputs.len());
+        assert_eq!(
+            n_parties,
+            inputs.len(),
+            "The number of parties was {} but only received {} inputs",
+            n_parties,
+            inputs.len()
+        );
 
         let mut receivers = vec![];
         let mut senders: Vec<Vec<Sender<_>>> = (0..n_parties).map(|_| vec![]).collect();
