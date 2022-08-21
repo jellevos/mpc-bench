@@ -9,8 +9,11 @@ use std::thread::spawn;
 use queues::Queue;
 use stats::PartyStats;
 
-mod comm;
-mod stats;
+/// Communication module, allows parties to send and receive messages.
+pub mod comm;
+
+/// Statistics module, allows parties to track timings and bandwidth costs.
+pub mod stats;
 
 /// A `Party` that takes part in a protocol. The party has a unique `id` and is pre-loaded with
 /// communication channels to and from all the other parties. A party keeps track of its own stats.

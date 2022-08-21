@@ -19,6 +19,7 @@ impl PartyStats {
         }
     }
 
+    /// Sets the name of this collection of statistics.
     pub fn set_name(&mut self, name: String) {
         self.name = Some(name);
     }
