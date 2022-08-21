@@ -205,7 +205,7 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
             .zip(senders.into_iter())
             .zip(inputs.into_iter())
             .map(|(((i, r), ss), input)| {
-                spawn(move || Self::run_party(&self, i, n_parties, Party::new(i, r, ss), input))
+                spawn(move || Self::run_party(self, i, n_parties, Party::new(i, r, ss), input))
             })
             .collect();
 
@@ -213,7 +213,7 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
     }
 
     /// Code to run one party in the protocol. The party gets a new copy of this protocol.
-    fn run_party(&self, id: usize, n_parties: usize, this_party: Party, input: I)
+    fn run_party(self, id: usize, n_parties: usize, this_party: Party, input: I)
         -> (PartyStats, O);
 }
 
@@ -226,7 +226,7 @@ mod tests {
 
     impl Protocol<usize, usize> for Example {
         fn run_party(
-            &self,
+            self,
             id: usize,
             n_parties: usize,
             mut this_party: Party,
