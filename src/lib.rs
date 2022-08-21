@@ -74,13 +74,14 @@ pub struct Party {
 
 impl Party {
     fn new(id: usize, receiver: Receiver<Message>, senders: Vec<Sender<Message>>) -> Self {
+        // TODO: Assert length equals receivers
         let sender_count = senders.len();
 
         Party {
             id,
             senders,
             receiver,
-            buffer: HashMap::new(),
+            buffer: HashMap::new(), // TODO: Change to Vec
             stats: PartyStats::new(sender_count),
         }
     }
@@ -170,6 +171,7 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
     where
         Self: 'static + Copy + Send,
     {
+        // TODO: Assert that n_parties agrees with the number of inputs
         let mut receivers = vec![];
         let mut senders: Vec<Vec<Sender<_>>> = (0..n_parties).map(|_| vec![]).collect();
 
@@ -189,7 +191,7 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
             .zip(senders.into_iter())
             .zip(inputs.into_iter())
             .map(|(((i, r), ss), input)| {
-                spawn(move || Self::run_party(self, i, n_parties, Party::new(i, r, ss), input))
+                spawn(move || Self::run_party(&self, i, n_parties, Party::new(i, r, ss), input))
             })
             .collect();
 
@@ -197,7 +199,7 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
     }
 
     /// Code to run one party in the protocol. The party gets a new copy of this protocol.
-    fn run_party(self, id: usize, n_parties: usize, this_party: Party, input: I)
+    fn run_party(&self, id: usize, n_parties: usize, this_party: Party, input: I)
         -> (PartyStats, O);
 }
 
@@ -210,7 +212,7 @@ mod tests {
 
     impl Protocol<usize, usize> for Example {
         fn run_party(
-            self,
+            &self,
             id: usize,
             n_parties: usize,
             mut this_party: Party,
