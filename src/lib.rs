@@ -4,65 +4,13 @@
 use std::fmt::Debug;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
-use std::time::{Duration, Instant};
-use queues::IsQueue;
+use comm::Message;
 
 use queues::Queue;
+use stats::PartyStats;
 
-/// A message that is sent from the party with id `from_id` to another, containing a `Vec` of bytes.
-struct Message {
-    from_id: usize,
-    contents: Vec<u8>,
-}
-
-/// Statistics pertaining to one party, such as the number of bytes sent and the durations measured.
-#[derive(Debug)]
-pub struct PartyStats {
-    name: Option<String>,
-    sent_bytes: Vec<usize>,
-    measured_durations: Vec<(String, Duration)>,
-}
-
-impl PartyStats {
-    fn new(sender_count: usize) -> Self {
-        PartyStats {
-            name: None,
-            sent_bytes: vec![0; sender_count],
-            measured_durations: vec![],
-        }
-    }
-
-    fn set_name(&mut self, name: String) {
-        self.name = Some(name);
-    }
-
-    fn add_sent_bytes(&mut self, byte_count: usize, to_id: &usize) {
-        self.sent_bytes[*to_id] += byte_count;
-    }
-
-    fn write_duration(&mut self, name: String, duration: Duration) {
-        self.measured_durations.push((name, duration));
-    }
-}
-
-/// A `Timer` that starts measuring a duration upon creation, until it is stopped.
-pub struct Timer {
-    name: String,
-    start_time: Instant,
-}
-
-impl Timer {
-    fn new(name: String) -> Self {
-        Timer {
-            name,
-            start_time: Instant::now(),
-        }
-    }
-
-    fn stop(&self) -> (String, Duration) {
-        (self.name.clone(), self.start_time.elapsed())
-    }
-}
+mod comm;
+mod stats;
 
 /// A `Party` that takes part in a protocol. The party has a unique `id` and is pre-loaded with
 /// communication channels to and from all the other parties. A party keeps track of its own stats.
@@ -90,86 +38,6 @@ impl Party {
     /// Sets an actual name for a party to make the stats easier to interpret.
     pub fn set_name(&mut self, name: String) {
         self.stats.set_name(name);
-    }
-
-    /// Creates a timer with the given `name` that starts running immediately.
-    pub fn create_timer(&self, name: &str) -> Timer {
-        Timer::new(String::from(name))
-    }
-
-    /// Stops the `timer` and writes it measured duration to this party's statistics.
-    pub fn stop_timer(&mut self, timer: Timer) {
-        let (name, duration) = timer.stop();
-        self.stats.write_duration(name, duration);
-    }
-
-    /// Blocks until this party receives a message from the party with `from_id`. A message is a
-    /// vector of bytes `Vec<u8>`. This can be achieved for example using `bincode` serialization.
-    pub fn receive(&mut self, from_id: &usize) -> Vec<u8> {
-        debug_assert_ne!(*from_id, self.id, "`from_id = {}` may not be the same as `self.id = {}`", from_id, self.id);
-
-        let reduced_id = if *from_id < self.id {
-            *from_id
-        } else {
-            *from_id - 1
-        };
-
-        match self.buffer[reduced_id].size() {
-            0 => loop {
-                let message = self.receiver.recv().unwrap();
-
-                if message.from_id == *from_id {
-                    break message.contents;
-                }
-
-                let message_reduced_id = if message.from_id < self.id {
-                    message.from_id
-                } else {
-                    message.from_id - 1
-                };
-                self.buffer[message_reduced_id].add(message.contents).unwrap();
-            },
-            _ => self.buffer[reduced_id].remove().unwrap(),
-        }
-    }
-
-    /// Sends a vector of bytes to the party with `to_id` and keeps track of the number of bits sent
-    /// to this party.
-    pub fn send(&mut self, message: &[u8], to_id: &usize) {
-        let byte_count = message.len();
-
-        self.senders[*to_id]
-            .send(Message {
-                from_id: self.id,
-                contents: message.to_vec(),
-            })
-            .unwrap();
-
-        self.stats.add_sent_bytes(byte_count, to_id);
-    }
-
-    /// Broadcasts a message (a vector of bytes) to all parties and keeps track of the number of
-    /// bits sent.
-    pub fn broadcast(&mut self, message: &[u8]) {
-        let byte_count = message.len();
-
-        for sender in &self.senders {
-            sender
-                .send(Message {
-                    from_id: self.id,
-                    contents: message.to_vec(),
-                })
-                .unwrap();
-        }
-
-        for i in 0..self.senders.len() {
-            self.stats.add_sent_bytes(byte_count, &i);
-        }
-    }
-
-    /// Gets the collected statistics for this party.
-    pub fn get_stats(self) -> PartyStats {
-        self.stats
     }
 }
 
