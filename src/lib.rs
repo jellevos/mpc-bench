@@ -166,7 +166,7 @@ impl Party {
 pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
     /// Evaluates the protocol for a given number of parties `n_parties`, each with the input
     /// provided by the `inputs` field.
-    fn evaluate(self, n_parties: usize, mut inputs: Vec<I>) -> Vec<(PartyStats, O)>
+    fn evaluate(self, n_parties: usize, inputs: Vec<I>) -> Vec<(PartyStats, O)>
     where
         Self: 'static + Copy + Send,
     {
@@ -183,15 +183,17 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
             }
         }
 
-        let handles = (0..n_parties)
-            .zip(receivers.drain(0..n_parties))
-            .zip(senders.drain(0..n_parties))
-            .zip(inputs.drain(0..n_parties))
+        #[allow(clippy::needless_collect)]
+        let handles: Vec<_> = (0..n_parties)
+            .zip(receivers.into_iter())
+            .zip(senders.into_iter())
+            .zip(inputs.into_iter())
             .map(|(((i, r), ss), input)| {
                 spawn(move || Self::run_party(self, i, n_parties, Party::new(i, r, ss), input))
-            });
+            })
+            .collect();
 
-        handles.map(|h| h.join().unwrap()).collect()
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
     }
 
     /// Code to run one party in the protocol. The party gets a new copy of this protocol.
