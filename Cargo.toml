@@ -10,3 +10,4 @@ repository = "https://github.com/jellevos/mpc-bench"
 readme = "README.md"
 
 [dependencies]
+queues = "1.1"

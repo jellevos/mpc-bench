@@ -1,11 +1,13 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs, unused_imports)]
 
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
 use std::time::{Duration, Instant};
+use queues::IsQueue;
+
+use queues::Queue;
 
 /// A message that is sent from the party with id `from_id` to another, containing a `Vec` of bytes.
 struct Message {
@@ -68,20 +70,19 @@ pub struct Party {
     id: usize,
     senders: Vec<Sender<Message>>,
     receiver: Receiver<Message>,
-    buffer: HashMap<usize, Vec<u8>>,
+    buffer: Vec<Queue<Vec<u8>>>,
     stats: PartyStats,
 }
 
 impl Party {
     fn new(id: usize, receiver: Receiver<Message>, senders: Vec<Sender<Message>>) -> Self {
-        // TODO: Assert length equals receivers
         let sender_count = senders.len();
 
         Party {
             id,
             senders,
             receiver,
-            buffer: HashMap::new(), // TODO: Change to Vec
+            buffer: (0..sender_count - 1).map(|_| Queue::new()).collect(),
             stats: PartyStats::new(sender_count),
         }
     }
@@ -105,18 +106,30 @@ impl Party {
     /// Blocks until this party receives a message from the party with `from_id`. A message is a
     /// vector of bytes `Vec<u8>`. This can be achieved for example using `bincode` serialization.
     pub fn receive(&mut self, from_id: &usize) -> Vec<u8> {
-        let contents = self.buffer.remove(from_id);
-        match contents {
-            Some(c) => c,
-            None => loop {
+        debug_assert_ne!(*from_id, self.id, "`from_id = {}` may not be the same as `self.id = {}`", from_id, self.id);
+
+        let reduced_id = if *from_id < self.id {
+            *from_id
+        } else {
+            *from_id - 1
+        };
+
+        match self.buffer[reduced_id].size() {
+            0 => loop {
                 let message = self.receiver.recv().unwrap();
 
                 if message.from_id == *from_id {
                     break message.contents;
                 }
 
-                self.buffer.insert(message.from_id, message.contents);
+                let message_reduced_id = if message.from_id < self.id {
+                    message.from_id
+                } else {
+                    message.from_id - 1
+                };
+                self.buffer[message_reduced_id].add(message.contents).unwrap();
             },
+            _ => self.buffer[reduced_id].remove().unwrap(),
         }
     }
 
@@ -171,7 +184,8 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
     where
         Self: 'static + Copy + Send,
     {
-        // TODO: Assert that n_parties agrees with the number of inputs
+        assert_eq!(n_parties, inputs.len(), "The number of parties was {} but only received {} inputs", n_parties, inputs.len());
+
         let mut receivers = vec![];
         let mut senders: Vec<Vec<Sender<_>>> = (0..n_parties).map(|_| vec![]).collect();
 
