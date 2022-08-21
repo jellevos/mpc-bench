@@ -48,7 +48,7 @@ impl Party {
 pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
     /// Evaluates the protocol for a given number of parties `n_parties`, each with the input
     /// provided by the `inputs` field.
-    fn evaluate(self, n_parties: usize, inputs: Vec<I>) -> Vec<(PartyStats, O)>
+    fn evaluate(self, n_parties: usize, inputs: Vec<I>) -> (Vec<PartyStats>, Vec<O>)
     where
         Self: 'static + Copy + Send,
     {
@@ -77,7 +77,14 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
             })
             .collect();
 
-        handles.into_iter().map(|h| h.join().unwrap()).collect()
+        let mut all_stats = vec![];
+        let mut all_outputs = vec![];
+        for (stats, output) in handles.into_iter().map(|h| h.join().unwrap()) {
+            all_stats.push(stats);
+            all_outputs.push(output);
+        }
+
+        (all_stats, all_outputs)
     }
 
     /// Code to run one party in the protocol. The party gets a new copy of this protocol.
@@ -129,12 +136,13 @@ mod tests {
     #[test]
     fn it_works() {
         let example = Example;
-        let outputs = example.evaluate(5, vec![10; 5]);
+        let (stats, outputs) = example.evaluate(5, vec![10; 5]);
 
-        assert_eq!(outputs[0].1, 10);
-        assert_eq!(outputs[1].1, 11);
-        assert_eq!(outputs[2].1, 12);
-        assert_eq!(outputs[3].1, 13);
-        assert_eq!(outputs[4].1, 14);
+        println!("stats: {:?}", stats);
+        assert_eq!(outputs[0], 10);
+        assert_eq!(outputs[1], 11);
+        assert_eq!(outputs[2], 12);
+        assert_eq!(outputs[3], 13);
+        assert_eq!(outputs[4], 14);
     }
 }
