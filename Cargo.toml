@@ -1,7 +1,7 @@
 [package]
 name = "mpc-bench"
 description = "Multi-party computation experimentation library"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Jelle Vos <J.V.Vos@tudelft.nl>"]
 edition = "2018"
 license = "MIT"
