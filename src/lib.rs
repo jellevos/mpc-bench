@@ -48,10 +48,10 @@ impl Party {
 /// an output of type `O`. The code a party runs should be implemented in the `run_party` method.
 /// The `Protocol` should implement the `Copy` trait, as the `run_party` method will be called with
 /// a fresh copy of the `Protocol` (and its parameters) for each invocation.
-pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send> {
+pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::marker::Send, S: std::marker::Send + 'static> {
     /// Evaluates the protocol for a given number of parties `n_parties`, each with the input
     /// provided by the `inputs` field.
-    fn evaluate(self, n_parties: usize, inputs: Vec<I>) -> (Vec<PartyStats>, Vec<O>)
+    fn evaluate(self, n_parties: usize, inputs: Vec<I>, party_secrets: Vec<S>) -> (Vec<PartyStats>, Vec<O>)
     where
         Self: 'static + Copy + Send,
     {
@@ -81,8 +81,9 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
             .zip(receivers.into_iter())
             .zip(senders.into_iter())
             .zip(inputs.into_iter())
-            .map(|(((i, r), ss), input)| {
-                spawn(move || Self::run_party(self, i, n_parties, Party::new(i, r, ss), input))
+            .zip(party_secrets.into_iter())
+            .map(|((((i, r), ss), input), secret)| {
+                spawn(move || Self::run_party(self, i, n_parties, Party::new(i, r, ss), input, secret))
             })
             .collect();
 
@@ -97,7 +98,7 @@ pub trait Protocol<I: 'static + std::marker::Send, O: 'static + Debug + std::mar
     }
 
     /// Code to run one party in the protocol. The party gets a new copy of this protocol.
-    fn run_party(self, id: usize, n_parties: usize, this_party: Party, input: I)
+    fn run_party(self, id: usize, n_parties: usize, this_party: Party, input: I, secret: S)
         -> (PartyStats, O);
 }
 
@@ -108,13 +109,14 @@ mod tests {
     #[derive(Copy, Clone)]
     struct Example;
 
-    impl Protocol<usize, usize> for Example {
+    impl Protocol<usize, usize, ()> for Example {
         fn run_party(
             self,
             id: usize,
             n_parties: usize,
             mut this_party: Party,
             input: usize,
+            secret: ()
         ) -> (PartyStats, usize) {
             match id {
                 0 => this_party.set_name(String::from("Leader")),
@@ -145,7 +147,7 @@ mod tests {
     #[test]
     fn it_works() {
         let example = Example;
-        let (stats, outputs) = example.evaluate(5, vec![10; 5]);
+        let (stats, outputs) = example.evaluate(5, vec![10; 5], vec![(); 5]);
 
         println!("stats: {:?}", stats);
         assert_eq!(outputs[0], 10);
