@@ -1,3 +1,5 @@
+use std::{thread::sleep, time::Duration};
+
 use crate::Party;
 
 use queues::IsQueue;
@@ -8,10 +10,36 @@ pub(crate) struct Message {
     contents: Vec<u8>,
 }
 
+/// Returns bytes with a delay, to simulate latency and bandwidth overhead
+pub struct DelayedByteIterator {
+    bytes: Vec<u8>,
+    seconds_per_byte: Duration,
+}
+
+impl DelayedByteIterator {
+    /// Creates a DelayedByteIterator for the given `bytes`, and immediately delaying for `latency`, after which each byte is returned with `seconds_per_byte` delay.
+    pub fn new(bytes: Vec<u8>, latency: Duration, seconds_per_byte: Duration) -> Self {
+        sleep(latency);
+        DelayedByteIterator {
+            bytes,
+            seconds_per_byte,
+        }
+    }
+}
+
+impl Iterator for DelayedByteIterator {
+    type Item = u8;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        sleep(self.seconds_per_byte);
+        self.bytes.pop()
+    }
+}
+
 impl Party {
     /// Blocks until this party receives a message from the party with `from_id`. A message is a
     /// vector of bytes `Vec<u8>`. This can be achieved for example using `bincode` serialization.
-    pub fn receive(&mut self, from_id: &usize) -> Vec<u8> {
+    pub fn receive(&mut self, from_id: &usize) -> DelayedByteIterator {
         debug_assert_ne!(
             *from_id, self.id,
             "`from_id = {}` may not be the same as `self.id = {}`",
@@ -24,7 +52,7 @@ impl Party {
             *from_id - 1
         };
 
-        match self.buffer[reduced_id].size() {
+        let bytes = match self.buffer[reduced_id].size() {
             0 => loop {
                 let message = self.receiver.recv().unwrap();
 
@@ -42,7 +70,9 @@ impl Party {
                     .unwrap();
             },
             _ => self.buffer[reduced_id].remove().unwrap(),
-        }
+        };
+
+        DelayedByteIterator::new(bytes, self.latency, self.seconds_per_byte)
     }
 
     /// Sends a vector of bytes to the party with `to_id` and keeps track of the number of bits sent
