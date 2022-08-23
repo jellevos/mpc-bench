@@ -1,4 +1,4 @@
-use std::{thread::sleep, time::Duration};
+use std::{thread::sleep, time::Duration, vec::IntoIter};
 
 use crate::Party;
 
@@ -12,7 +12,7 @@ pub(crate) struct Message {
 
 /// Returns bytes with a delay, to simulate latency and bandwidth overhead
 pub struct DelayedByteIterator {
-    bytes: Vec<u8>,
+    bytes: IntoIter<u8>,
     seconds_per_byte: Duration,
 }
 
@@ -21,7 +21,7 @@ impl DelayedByteIterator {
     pub fn new(bytes: Vec<u8>, latency: Duration, seconds_per_byte: Duration) -> Self {
         sleep(latency);
         DelayedByteIterator {
-            bytes,
+            bytes: bytes.into_iter(),
             seconds_per_byte,
         }
     }
@@ -32,7 +32,7 @@ impl Iterator for DelayedByteIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         sleep(self.seconds_per_byte);
-        self.bytes.pop()
+        self.bytes.next()
     }
 }
 
