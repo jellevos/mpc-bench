@@ -1,4 +1,7 @@
-use std::{time::{Duration, Instant}, collections::HashMap};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use stats::{mean, stddev};
 use tabled::{builder::Builder, Style};
@@ -11,26 +14,39 @@ pub struct AggregatedStats {
     timings: Vec<Vec<Timings>>,
 }
 
+/// The names, means and standard deviations of all parties' measured run times.
 pub struct TimingSummary {
     timing_names: Vec<String>,
     party_names: Vec<String>,
     party_means: Vec<Vec<Option<f64>>>,
-    party_stdevs: Vec<Vec<Option<f64>>>
+    party_stdevs: Vec<Vec<Option<f64>>>,
 }
 
 impl TimingSummary {
+    /// Prints a pretty table of the summarized timings.
     pub fn print(&self) {
         let mut builder = Builder::default();
 
         // Add header
-        builder.add_record(["Parties".to_string()].into_iter().chain(self.timing_names.iter().cloned()));
+        builder.add_record(
+            ["Parties".to_string()]
+                .into_iter()
+                .chain(self.timing_names.iter().cloned()),
+        );
 
         // Add each party's data
-        for ((means, stdevs), party_name) in self.party_means.iter().zip(&self.party_stdevs).zip(&self.party_names) {
-            builder.add_record([party_name.clone()].into_iter().chain(means.iter().zip(stdevs).map(|data| match data {
-                (&Some(mean), &Some(stdev)) => format!("{:.3} ± {:.3} s", mean, stdev),
-                _ => "".to_string()
-            })));
+        for ((means, stdevs), party_name) in self
+            .party_means
+            .iter()
+            .zip(&self.party_stdevs)
+            .zip(&self.party_names)
+        {
+            builder.add_record([party_name.clone()].into_iter().chain(
+                means.iter().zip(stdevs).map(|data| match data {
+                    (&Some(mean), &Some(stdev)) => format!("{:.3} ± {:.3} s", mean, stdev),
+                    _ => "".to_string(),
+                }),
+            ));
         }
 
         let table = builder.build().with(Style::modern());
@@ -54,10 +70,14 @@ impl AggregatedStats {
         self.timings.push(party_stats);
     }
 
+    /// Summarizes the timings of all parties.
     pub fn summarize_timings(&self) -> TimingSummary {
         let mut timing_names = vec![];
-        let mut party_timings_per_name: Vec<HashMap<String, Vec<f64>>> = (0..self.party_names.len()).map(|_| HashMap::new()).collect();
-        
+        let mut party_timings_per_name: Vec<HashMap<String, Vec<f64>>> =
+            (0..self.party_names.len())
+                .map(|_| HashMap::new())
+                .collect();
+
         for (party_timings, map) in self.timings.iter().zip(&mut party_timings_per_name) {
             for timing in party_timings {
                 for (t, d) in &timing.measured_durations {
@@ -72,14 +92,30 @@ impl AggregatedStats {
 
         println!("{:?}", party_timings_per_name);
 
-        let party_means = (0..self.party_names.len()).map(|i| timing_names.iter().map(|t| match party_timings_per_name[i].get(t) {
-            Some(durations) => Some(mean(durations.iter().cloned())),
-            None => None
-        }).collect::<Vec<_>>()).collect();
-        let party_stdevs = (0..self.party_names.len()).map(|i| timing_names.iter().map(|t| match party_timings_per_name[i].get(t) {
-            Some(durations) => Some(stddev(durations.iter().cloned())),
-            None => None
-        }).collect::<Vec<_>>()).collect();
+        let party_means = (0..self.party_names.len())
+            .map(|i| {
+                timing_names
+                    .iter()
+                    .map(|t| {
+                        party_timings_per_name[i]
+                            .get(t)
+                            .map(|durations| mean(durations.iter().cloned()))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let party_stdevs = (0..self.party_names.len())
+            .map(|i| {
+                timing_names
+                    .iter()
+                    .map(|t| {
+                        party_timings_per_name[i]
+                            .get(t)
+                            .map(|durations| stddev(durations.iter().cloned()))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
 
         TimingSummary {
             timing_names,

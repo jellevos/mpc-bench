@@ -67,7 +67,14 @@ where
         let mut parties = self.setup_parties(n_parties);
         debug_assert_eq!(parties.len(), n_parties);
 
-        let mut stats = AggregatedStats::new(experiment_name, parties.iter().enumerate().map(|(id, party)| party.get_name(id)).collect());
+        let mut stats = AggregatedStats::new(
+            experiment_name,
+            parties
+                .iter()
+                .enumerate()
+                .map(|(id, party)| party.get_name(id))
+                .collect(),
+        );
 
         for _ in 0..repetitions {
             let inputs = self.generate_inputs(n_parties);
@@ -76,8 +83,7 @@ where
             let mut channels = network_description.instantiate(n_parties);
             debug_assert_eq!(channels.len(), n_parties);
 
-            let mut party_timings: Vec<Timings> =
-                (0..n_parties).map(|_| Timings::new()).collect();
+            let mut party_timings: Vec<Timings> = (0..n_parties).map(|_| Timings::new()).collect();
 
             let outputs: Vec<_> = parties
                 .par_iter_mut()
@@ -113,7 +119,7 @@ mod tests {
 
     use crate::{
         comm::{Channels, FullMesh},
-        Party, Timings, Protocol,
+        Party, Protocol, Timings,
     };
 
     struct ExampleParty;
@@ -185,6 +191,7 @@ mod tests {
         let stats = example.evaluate("Experiment".to_string(), 5, &network, 1);
 
         println!("stats: {:?}", stats);
+        // FIXME: All rows are aggregated instead of party-by-party
         stats.summarize_timings().print();
     }
 
