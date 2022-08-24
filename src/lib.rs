@@ -1,5 +1,3 @@
-#![feature(generic_associated_types)]
-#![feature(scoped_threads)]
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs, unused_imports)]
 
