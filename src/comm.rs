@@ -77,6 +77,7 @@ pub struct DelayedByteIterator {
 impl DelayedByteIterator {
     /// Creates a DelayedByteIterator for the given `bytes`, and immediately delaying for `latency`, after which each byte is returned with `seconds_per_byte` delay.
     pub fn new(bytes: Vec<u8>, latency: Duration, seconds_per_byte: Duration) -> Self {
+        // TODO: Latency can be concurrent (we can maybe make sending async and sleep before 'truly' sending)
         sleep(latency);
         DelayedByteIterator {
             bytes: bytes.into_iter(),

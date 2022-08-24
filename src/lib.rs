@@ -5,13 +5,13 @@ use comm::{Channels, NetworkDescription};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 use std::fmt::Debug;
 
-use stats::{AggregatedStats, Timings};
+use statistics::{AggregatedStats, Timings};
 
 /// Communication module, allows parties to send and receive messages.
 pub mod comm;
 
 /// Statistics module, allows parties to track timings and bandwidth costs.
-pub mod stats;
+pub mod statistics;
 
 /// A `Party` that takes part in a protocol. The party will receive a unique `id` when it is running the protocol, as well as
 /// communication channels to and from all the other parties. A party keeps track of its own stats.
@@ -59,13 +59,15 @@ where
     /// Evaluates multiple `repetitions` of the protocol with this parameterization of the Protocol.
     fn evaluate<N: NetworkDescription>(
         &self,
+        experiment_name: String,
         n_parties: usize,
         network_description: &N,
-        stats: &mut AggregatedStats,
         repetitions: usize,
-    ) {
+    ) -> AggregatedStats {
         let mut parties = self.setup_parties(n_parties);
         debug_assert_eq!(parties.len(), n_parties);
+
+        let mut stats = AggregatedStats::new(experiment_name, parties.iter().enumerate().map(|(id, party)| party.get_name(id)).collect());
 
         for _ in 0..repetitions {
             let inputs = self.generate_inputs(n_parties);
@@ -97,8 +99,11 @@ where
             }
 
             // TODO: Incorporate communication costs
+            println!("{:?}", party_timings);
             stats.incorporate_party_stats(party_timings);
         }
+
+        stats
     }
 }
 
@@ -108,7 +113,6 @@ mod tests {
 
     use crate::{
         comm::{Channels, FullMesh},
-        stats::AggregatedStats,
         Party, Timings, Protocol,
     };
 
@@ -128,12 +132,13 @@ mod tests {
         ) -> Self::Output {
             println!("Hi! I am {}/{}", id, n_parties - 1);
 
-            let sending_timer = stats.create_timer("sending");
+            let sending_timer = stats.create_timer("Sending");
             for i in (id + 1)..n_parties {
                 channels.send(&vec![id as u8], &i);
             }
             stats.stop_timer(sending_timer);
 
+            let receiving_timer = stats.create_timer("Receiving");
             for j in 0..id {
                 println!(
                     "I am {}/{} and I received a message from {}",
@@ -142,6 +147,7 @@ mod tests {
                     channels.receive(&j).collect::<Vec<_>>()[0]
                 );
             }
+            stats.stop_timer(receiving_timer);
 
             id + input
         }
@@ -176,10 +182,10 @@ mod tests {
     fn it_works() {
         let example = ExampleProtocol;
         let network = FullMesh::new();
-        let mut stats = AggregatedStats::new("Stats".to_string());
-        example.evaluate(5, &network, &mut stats, 1);
+        let stats = example.evaluate("Experiment".to_string(), 5, &network, 1);
 
         println!("stats: {:?}", stats);
+        stats.summarize_timings().print();
     }
 
     #[test]
@@ -188,17 +194,17 @@ mod tests {
 
         let start = Instant::now();
         let network = FullMesh::new();
-        let mut stats = AggregatedStats::new("Stats".to_string());
-        example.evaluate(5, &network, &mut stats, 1);
+        let _ = example.evaluate("Experiment".to_string(), 5, &network, 1);
         let duration_1 = start.elapsed();
 
         let start = Instant::now();
         let network = FullMesh::new_with_overhead(Duration::from_secs(1), 1.);
-        let mut stats = AggregatedStats::new("Stats (overhead)".to_string());
-        example.evaluate(5, &network, &mut stats, 1);
+        let stats = example.evaluate("Experiment (w/ overhead)".to_string(), 5, &network, 1);
         let duration_2 = start.elapsed();
 
         assert!(duration_2 > duration_1);
         assert!(duration_2 > Duration::from_secs(12));
+
+        stats.summarize_timings().print();
     }
 }
