@@ -5,7 +5,7 @@ use comm::{Channels, NetworkDescription};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 use std::fmt::Debug;
 
-use stats::{AggregatedStats, PartyStats};
+use stats::{AggregatedStats, Timings};
 
 /// Communication module, allows parties to send and receive messages.
 pub mod comm;
@@ -33,7 +33,7 @@ pub trait Party {
         n_parties: usize,
         input: Self::Input,
         channels: &mut Channels,
-        stats: &mut PartyStats,
+        timings: &mut Timings,
     ) -> Self::Output;
 }
 
@@ -74,15 +74,15 @@ where
             let mut channels = network_description.instantiate(n_parties);
             debug_assert_eq!(channels.len(), n_parties);
 
-            let mut party_stats: Vec<PartyStats> =
-                (0..n_parties).map(|_| PartyStats::new()).collect();
+            let mut party_timings: Vec<Timings> =
+                (0..n_parties).map(|_| Timings::new()).collect();
 
             let outputs: Vec<_> = parties
                 .par_iter_mut()
                 .enumerate()
                 .zip(inputs)
                 .zip(channels.par_iter_mut())
-                .zip(party_stats.par_iter_mut())
+                .zip(party_timings.par_iter_mut())
                 .map(|((((id, party), input), channel), s)| {
                     party.run(id, n_parties, input, channel, s)
                 })
@@ -96,10 +96,8 @@ where
                 // TODO: Mark invalid in stats
             }
 
-            for s in party_stats {
-                // TODO: Incorporate communication costs
-                stats.incorporate_party_stats(s);
-            }
+            // TODO: Incorporate communication costs
+            stats.incorporate_party_stats(party_timings);
         }
     }
 }
@@ -111,7 +109,7 @@ mod tests {
     use crate::{
         comm::{Channels, FullMesh},
         stats::AggregatedStats,
-        Party, PartyStats, Protocol,
+        Party, Timings, Protocol,
     };
 
     struct ExampleParty;
@@ -126,7 +124,7 @@ mod tests {
             n_parties: usize,
             input: Self::Input,
             channels: &mut Channels,
-            stats: &mut PartyStats,
+            stats: &mut Timings,
         ) -> Self::Output {
             println!("Hi! I am {}/{}", id, n_parties - 1);
 

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 /// Contains the aggregated statistics for multiple experiments.
 pub struct AggregatedStats {
     _name: String,
-    stats: Vec<PartyStats>,
+    timings: Vec<Vec<Timings>>,
 }
 
 impl AggregatedStats {
@@ -12,25 +12,25 @@ impl AggregatedStats {
     pub fn new(name: String) -> Self {
         AggregatedStats {
             _name: name,
-            stats: vec![],
+            timings: vec![],
         }
     }
 
     /// Incorporates one party's resulting statistics into this aggregate.
-    pub fn incorporate_party_stats(&mut self, party_stats: PartyStats) {
-        self.stats.push(party_stats);
+    pub fn incorporate_party_stats(&mut self, party_stats: Vec<Timings>) {
+        self.timings.push(party_stats);
     }
 }
 
 /// Statistics pertaining to one party, such as the number of bytes sent and the durations measured.
 #[derive(Debug)]
-pub struct PartyStats {
+pub struct Timings {
     measured_durations: Vec<(String, Duration)>,
 }
 
-impl PartyStats {
+impl Timings {
     pub(crate) fn new() -> Self {
-        PartyStats {
+        Timings {
             measured_durations: vec![],
         }
     }
@@ -59,7 +59,7 @@ impl Timer {
     }
 }
 
-impl PartyStats {
+impl Timings {
     /// Creates a timer with the given `name` that starts running immediately.
     pub fn create_timer(&self, name: &str) -> Timer {
         Timer::new(String::from(name))
