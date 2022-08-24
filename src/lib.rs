@@ -18,27 +18,37 @@ pub mod stats;
 /// A `Party` that takes part in a protocol. The party will receive a unique `id` when it is running the protocol, as well as
 /// communication channels to and from all the other parties. A party keeps track of its own stats.
 pub trait Party {
+    /// The input type of this party. It must be the same for all parties in a given protocol (but it could be e.g. an enum or Option).
     type Input: Send;
+    /// The output type of this party. It must be the same for all parties in a given protocol (but it could be e.g. an enum or Option)
     type Output: Debug + Send;
 
+    /// Gets the name of this party. By default, this is 'Party {id}'.
     fn get_name(&self, id: usize) -> String {
         format!("Party {}", id)
     }
 
+    /// Runs the code for this party in the given protocol. The `id` starts from 0.
     fn run(&mut self, id: usize, n_parties: usize, input: Self::Input, channels: &mut Channels, stats: &mut PartyStats) -> Self::Output;
 }
 
+/// MPC protocols are described by the `Protocol` trait for a given `Party` type that can be sent accross threads. An implementation should hold the protocol-specific parameters.
 pub trait Protocol where Self: Debug {
+    /// The type of the parties participating in the Protocol.
     type Party: Party + Send;
 
+    /// Sets up `n_parties` according to this parameterization of the Protocol.
     fn setup_parties(&self, n_parties: usize) -> Vec<Self::Party>;
 
+    /// Generates each party's potentially random input for this parameterization of the Protocol.
     fn generate_inputs(&self, n_parties: usize) -> Vec<<Self::Party as Party>::Input>;
 
-    fn validate_outputs(&self, outputs: &Vec<<Self::Party as Party>::Output>) -> bool {
+    /// Validates the outputs of one run of the Protocol. If false, `evaluate` will print a warning.
+    fn validate_outputs(&self, _outputs: &Vec<<Self::Party as Party>::Output>) -> bool {
         true
     }
 
+    /// Evaluates multiple `repetitions` of the protocol with this parameterization of the Protocol.
     fn evaluate<N: NetworkDescription>(&self, n_parties: usize, network_description: &N, stats: &mut AggregatedStats, repetitions: usize) {
         let mut parties = self.setup_parties(n_parties);
         debug_assert_eq!(parties.len(), n_parties);

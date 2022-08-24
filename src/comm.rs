@@ -2,20 +2,25 @@ use std::{thread::sleep, time::Duration, vec::IntoIter, sync::mpsc::{Sender, Rec
 
 use queues::{IsQueue, Queue};
 
+/// A NetworkDescription is responsible for instantiating the networks it describes by spawning channels for each party.
 pub trait NetworkDescription {
+    /// Instantiates the Channels for each party.
     fn instantiate(&self, n_parties: usize) -> Vec<Channels>;
 }
 
+/// A full mesh network description.
 pub struct FullMesh {
     latency: Duration,
     seconds_per_byte: Duration
 }
 
 impl FullMesh {
+    /// Construct a FullMesh network description without communication overhead.
     pub fn new() -> Self {
         FullMesh { latency: Duration::ZERO, seconds_per_byte: Duration::ZERO }
     }
 
+    /// Construct a FullMesh network description with the specified `latency` and bandwidth constraints (maximum `bytes_per_second`).
     pub fn new_with_overhead(latency: Duration, bytes_per_second: f64) -> Self {
         FullMesh {
             latency,
@@ -75,6 +80,7 @@ impl Iterator for DelayedByteIterator {
     }
 }
 
+/// The communication channels for one party. These also keep track of how many bytes are sent.
 pub struct Channels {
     id: usize,
     senders: Vec<Sender<Message>>,
@@ -86,6 +92,7 @@ pub struct Channels {
 }
 
 impl Channels {
+    /// Contructs a new channel with communication overhead.
     pub fn new(id: usize, senders: Vec<Sender<Message>>, receiver: Receiver<Message>, latency: Duration, seconds_per_byte: Duration) -> Self {
         let sender_count = senders.len();
 

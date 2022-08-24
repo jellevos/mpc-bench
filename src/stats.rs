@@ -1,16 +1,19 @@
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
+/// Contains the aggregated statistics for multiple experiments.
 pub struct AggregatedStats {
-    name: String,
+    _name: String,
     stats: Vec<PartyStats>
 }
 
 impl AggregatedStats {
+    /// Constructs `AggregatedStats` with the given name for tracking statistics.
     pub fn new(name: String) -> Self {
-        AggregatedStats { name, stats: vec![] }
+        AggregatedStats { _name: name, stats: vec![] }
     }
 
+    /// Incorporates one party's resulting statistics into this aggregate.
     pub fn incorporate_party_stats(&mut self, party_stats: PartyStats) {
         self.stats.push(party_stats);
     }
