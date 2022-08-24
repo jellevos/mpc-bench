@@ -1,4 +1,9 @@
-use std::{thread::sleep, time::Duration, vec::IntoIter, sync::mpsc::{Sender, Receiver, channel}};
+use std::{
+    sync::mpsc::{channel, Receiver, Sender},
+    thread::sleep,
+    time::Duration,
+    vec::IntoIter,
+};
 
 use queues::{IsQueue, Queue};
 
@@ -8,23 +13,27 @@ pub trait NetworkDescription {
     fn instantiate(&self, n_parties: usize) -> Vec<Channels>;
 }
 
+#[derive(Default)]
 /// A full mesh network description.
 pub struct FullMesh {
     latency: Duration,
-    seconds_per_byte: Duration
+    seconds_per_byte: Duration,
 }
 
 impl FullMesh {
     /// Construct a FullMesh network description without communication overhead.
     pub fn new() -> Self {
-        FullMesh { latency: Duration::ZERO, seconds_per_byte: Duration::ZERO }
+        FullMesh {
+            latency: Duration::ZERO,
+            seconds_per_byte: Duration::ZERO,
+        }
     }
 
     /// Construct a FullMesh network description with the specified `latency` and bandwidth constraints (maximum `bytes_per_second`).
     pub fn new_with_overhead(latency: Duration, bytes_per_second: f64) -> Self {
         FullMesh {
             latency,
-            seconds_per_byte: Duration::from_secs_f64(1. / bytes_per_second)
+            seconds_per_byte: Duration::from_secs_f64(1. / bytes_per_second),
         }
     }
 }
@@ -44,7 +53,12 @@ impl NetworkDescription for FullMesh {
             }
         }
 
-        receivers.into_iter().enumerate().zip(senders).map(|((id, r), s)| Channels::new(id, s, r, self.latency, self.seconds_per_byte)).collect()
+        receivers
+            .into_iter()
+            .enumerate()
+            .zip(senders)
+            .map(|((id, r), s)| Channels::new(id, s, r, self.latency, self.seconds_per_byte))
+            .collect()
     }
 }
 
@@ -88,12 +102,18 @@ pub struct Channels {
     buffer: Vec<Queue<Vec<u8>>>,
     sent_bytes: Vec<usize>,
     latency: Duration,
-    seconds_per_byte: Duration
+    seconds_per_byte: Duration,
 }
 
 impl Channels {
     /// Contructs a new channel with communication overhead.
-    pub fn new(id: usize, senders: Vec<Sender<Message>>, receiver: Receiver<Message>, latency: Duration, seconds_per_byte: Duration) -> Self {
+    pub fn new(
+        id: usize,
+        senders: Vec<Sender<Message>>,
+        receiver: Receiver<Message>,
+        latency: Duration,
+        seconds_per_byte: Duration,
+    ) -> Self {
         let sender_count = senders.len();
 
         Channels {
@@ -103,7 +123,7 @@ impl Channels {
             buffer: (0..sender_count - 1).map(|_| Queue::new()).collect(),
             sent_bytes: vec![0; sender_count],
             latency,
-            seconds_per_byte
+            seconds_per_byte,
         }
     }
 

@@ -3,11 +3,11 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs, unused_imports)]
 
-use comm::{NetworkDescription, Channels};
-use rayon::prelude::{IntoParallelRefMutIterator, IndexedParallelIterator, ParallelIterator};
+use comm::{Channels, NetworkDescription};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 use std::fmt::Debug;
 
-use stats::{PartyStats, AggregatedStats};
+use stats::{AggregatedStats, PartyStats};
 
 /// Communication module, allows parties to send and receive messages.
 pub mod comm;
@@ -29,11 +29,21 @@ pub trait Party {
     }
 
     /// Runs the code for this party in the given protocol. The `id` starts from 0.
-    fn run(&mut self, id: usize, n_parties: usize, input: Self::Input, channels: &mut Channels, stats: &mut PartyStats) -> Self::Output;
+    fn run(
+        &mut self,
+        id: usize,
+        n_parties: usize,
+        input: Self::Input,
+        channels: &mut Channels,
+        stats: &mut PartyStats,
+    ) -> Self::Output;
 }
 
 /// MPC protocols are described by the `Protocol` trait for a given `Party` type that can be sent accross threads. An implementation should hold the protocol-specific parameters.
-pub trait Protocol where Self: Debug {
+pub trait Protocol
+where
+    Self: Debug,
+{
     /// The type of the parties participating in the Protocol.
     type Party: Party + Send;
 
@@ -44,12 +54,18 @@ pub trait Protocol where Self: Debug {
     fn generate_inputs(&self, n_parties: usize) -> Vec<<Self::Party as Party>::Input>;
 
     /// Validates the outputs of one run of the Protocol. If false, `evaluate` will print a warning.
-    fn validate_outputs(&self, _outputs: &Vec<<Self::Party as Party>::Output>) -> bool {
+    fn validate_outputs(&self, _outputs: &[<Self::Party as Party>::Output]) -> bool {
         true
     }
 
     /// Evaluates multiple `repetitions` of the protocol with this parameterization of the Protocol.
-    fn evaluate<N: NetworkDescription>(&self, n_parties: usize, network_description: &N, stats: &mut AggregatedStats, repetitions: usize) {
+    fn evaluate<N: NetworkDescription>(
+        &self,
+        n_parties: usize,
+        network_description: &N,
+        stats: &mut AggregatedStats,
+        repetitions: usize,
+    ) {
         let mut parties = self.setup_parties(n_parties);
         debug_assert_eq!(parties.len(), n_parties);
 
@@ -60,12 +76,25 @@ pub trait Protocol where Self: Debug {
             let mut channels = network_description.instantiate(n_parties);
             debug_assert_eq!(channels.len(), n_parties);
 
-            let mut party_stats: Vec<PartyStats> = (0..n_parties).map(|_| PartyStats::new()).collect();
+            let mut party_stats: Vec<PartyStats> =
+                (0..n_parties).map(|_| PartyStats::new()).collect();
 
-            let outputs = parties.par_iter_mut().enumerate().zip(inputs).zip(channels.par_iter_mut()).zip(party_stats.par_iter_mut()).map(|((((id, party), input), channel), s)| party.run(id, n_parties, input, channel, s)).collect();
+            let outputs: Vec<_> = parties
+                .par_iter_mut()
+                .enumerate()
+                .zip(inputs)
+                .zip(channels.par_iter_mut())
+                .zip(party_stats.par_iter_mut())
+                .map(|((((id, party), input), channel), s)| {
+                    party.run(id, n_parties, input, channel, s)
+                })
+                .collect();
 
             if !self.validate_outputs(&outputs) {
-                println!("The outputs are invalid:\n{:?} ...for these parameters:\n{:?}", outputs, self);
+                println!(
+                    "The outputs are invalid:\n{:?} ...for these parameters:\n{:?}",
+                    outputs, self
+                );
                 // TODO: Mark invalid in stats
             }
 
@@ -81,7 +110,11 @@ pub trait Protocol where Self: Debug {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use crate::{Party, PartyStats, Protocol, comm::{FullMesh, Channels}, stats::AggregatedStats};
+    use crate::{
+        comm::{Channels, FullMesh},
+        stats::AggregatedStats,
+        Party, PartyStats, Protocol,
+    };
 
     struct ExampleParty;
 
@@ -89,7 +122,14 @@ mod tests {
         type Input = usize;
         type Output = usize;
 
-        fn run(&mut self, id: usize, n_parties: usize, input: Self::Input, channels: &mut Channels, stats: &mut PartyStats) -> Self::Output {
+        fn run(
+            &mut self,
+            id: usize,
+            n_parties: usize,
+            input: Self::Input,
+            channels: &mut Channels,
+            stats: &mut PartyStats,
+        ) -> Self::Output {
             println!("Hi! I am {}/{}", id, n_parties - 1);
 
             let sending_timer = stats.create_timer("sending");
@@ -125,7 +165,7 @@ mod tests {
             (0..n_parties).map(|_| 10).collect()
         }
 
-        fn validate_outputs(&self, outputs: &Vec<<Self::Party as Party>::Output>) -> bool {
+        fn validate_outputs(&self, outputs: &[<Self::Party as Party>::Output]) -> bool {
             for i in 0..outputs.len() {
                 if outputs[i] != (10 + i) {
                     return false;
