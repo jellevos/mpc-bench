@@ -23,12 +23,12 @@ impl NetworkDescription for FullMesh {
             }
         }
 
-        receivers.into_iter().zip(senders).map(|r, s| Channels::new(s, r)).collect()
+        receivers.into_iter().enumerate().zip(senders).map(|((id, r), s)| Channels::new(id, s, r)).collect()
     }
 }
 
 /// A message that is sent from the party with id `from_id` to another, containing a `Vec` of bytes.
-pub(crate) struct Message {
+pub struct Message {
     from_id: usize,
     contents: Vec<u8>,
 }
@@ -60,6 +60,7 @@ impl Iterator for DelayedByteIterator {
 }
 
 pub struct Channels {
+    id: usize,
     senders: Vec<Sender<Message>>,
     receiver: Receiver<Message>,
     buffer: Vec<Queue<Vec<u8>>>,
@@ -67,10 +68,11 @@ pub struct Channels {
 }
 
 impl Channels {
-    pub fn new(senders: Vec<Sender<Message>>, receiver: Receiver<Message>) {
+    pub fn new(id: usize, senders: Vec<Sender<Message>>, receiver: Receiver<Message>) -> Self {
         let sender_count = senders.len();
 
         Channels {
+            id,
             senders,
             receiver,
             buffer: (0..sender_count - 1).map(|_| Queue::new()).collect(),
@@ -117,7 +119,8 @@ impl Channels {
             _ => self.buffer[reduced_id].remove().unwrap(),
         };
 
-        DelayedByteIterator::new(bytes, self.latency, self.seconds_per_byte)
+        //DelayedByteIterator::new(bytes, self.latency, self.seconds_per_byte)
+        DelayedByteIterator::new(bytes, Duration::ZERO, Duration::ZERO)
     }
 
     /// Sends a vector of bytes to the party with `to_id` and keeps track of the number of bits sent

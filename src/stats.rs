@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+#[derive(Debug)]
 pub struct AggregatedStats {
     name: String,
     stats: Vec<PartyStats>
