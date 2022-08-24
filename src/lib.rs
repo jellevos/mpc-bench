@@ -31,7 +31,7 @@ pub trait Party {
         &mut self,
         id: usize,
         n_parties: usize,
-        input: Self::Input,
+        input: &Self::Input,
         channels: &mut Channels,
         timings: &mut Timings,
     ) -> Self::Output;
@@ -52,7 +52,11 @@ where
     fn generate_inputs(&self, n_parties: usize) -> Vec<<Self::Party as Party>::Input>;
 
     /// Validates the outputs of one run of the Protocol. If false, `evaluate` will print a warning.
-    fn validate_outputs(&self, _outputs: &[<Self::Party as Party>::Output]) -> bool {
+    fn validate_outputs(
+        &self,
+        _inputs: &[<Self::Party as Party>::Input],
+        _outputs: &[<Self::Party as Party>::Output],
+    ) -> bool {
         true
     }
 
@@ -77,7 +81,7 @@ where
         );
 
         for _ in 0..repetitions {
-            let inputs = self.generate_inputs(n_parties);
+            let mut inputs = self.generate_inputs(n_parties);
             debug_assert_eq!(inputs.len(), n_parties);
 
             let mut channels = network_description.instantiate(n_parties);
@@ -88,7 +92,7 @@ where
             let outputs: Vec<_> = parties
                 .par_iter_mut()
                 .enumerate()
-                .zip(inputs)
+                .zip(inputs.par_iter_mut())
                 .zip(channels.par_iter_mut())
                 .zip(party_timings.par_iter_mut())
                 .map(|((((id, party), input), channel), s)| {
@@ -96,7 +100,7 @@ where
                 })
                 .collect();
 
-            if !self.validate_outputs(&outputs) {
+            if !self.validate_outputs(&inputs, &outputs) {
                 println!(
                     "The outputs are invalid:\n{:?} ...for these parameters:\n{:?}",
                     outputs, self
@@ -132,7 +136,7 @@ mod tests {
             &mut self,
             id: usize,
             n_parties: usize,
-            input: Self::Input,
+            input: &Self::Input,
             channels: &mut Channels,
             stats: &mut Timings,
         ) -> Self::Output {
@@ -173,9 +177,13 @@ mod tests {
             (0..n_parties).map(|_| 10).collect()
         }
 
-        fn validate_outputs(&self, outputs: &[<Self::Party as Party>::Output]) -> bool {
+        fn validate_outputs(
+            &self,
+            inputs: &[<Self::Party as Party>::Input],
+            outputs: &[<Self::Party as Party>::Output],
+        ) -> bool {
             for i in 0..outputs.len() {
-                if outputs[i] != (10 + i) {
+                if outputs[i] != (inputs[i] + i) {
                     return false;
                 }
             }
