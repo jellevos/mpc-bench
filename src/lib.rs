@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn it_works() {
         let example = ExampleProtocol;
-        let network = FullMesh;
+        let network = FullMesh::new();
         let mut stats = AggregatedStats::new("Stats".to_string());
         example.evaluate(5, &network, &mut stats, 1);
 
@@ -141,23 +141,18 @@ mod tests {
         let example = ExampleProtocol;
 
         let start = Instant::now();
-        let network = FullMesh;
+        let network = FullMesh::new();
         let mut stats = AggregatedStats::new("Stats".to_string());
         example.evaluate(5, &network, &mut stats, 1);
         let duration_1 = start.elapsed();
 
-        // FIXME: Add communication overhead
-        // let start = Instant::now();
-        // let (_, _) = example.evaluate_with_communication_overhead(
-        //     5,
-        //     vec![10; 5],
-        //     vec![(); 5],
-        //     Duration::from_secs(1),
-        //     1.,
-        // );
-        // let duration_2 = start.elapsed();
+        let start = Instant::now();
+        let network = FullMesh::new_with_overhead(Duration::from_secs(1), 1.);
+        let mut stats = AggregatedStats::new("Stats (overhead)".to_string());
+        example.evaluate(5, &network, &mut stats, 1);
+        let duration_2 = start.elapsed();
 
-        // assert!(duration_2 > duration_1);
-        // assert!(duration_2 > Duration::from_secs(12));
+        assert!(duration_2 > duration_1);
+        assert!(duration_2 > Duration::from_secs(12));
     }
 }

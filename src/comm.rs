@@ -6,7 +6,23 @@ pub trait NetworkDescription {
     fn instantiate(&self, n_parties: usize) -> Vec<Channels>;
 }
 
-pub struct FullMesh;
+pub struct FullMesh {
+    latency: Duration,
+    seconds_per_byte: Duration
+}
+
+impl FullMesh {
+    pub fn new() -> Self {
+        FullMesh { latency: Duration::ZERO, seconds_per_byte: Duration::ZERO }
+    }
+
+    pub fn new_with_overhead(latency: Duration, bytes_per_second: f64) -> Self {
+        FullMesh {
+            latency,
+            seconds_per_byte: Duration::from_secs_f64(1. / bytes_per_second)
+        }
+    }
+}
 
 impl NetworkDescription for FullMesh {
     fn instantiate(&self, n_parties: usize) -> Vec<Channels> {
@@ -23,7 +39,7 @@ impl NetworkDescription for FullMesh {
             }
         }
 
-        receivers.into_iter().enumerate().zip(senders).map(|((id, r), s)| Channels::new(id, s, r)).collect()
+        receivers.into_iter().enumerate().zip(senders).map(|((id, r), s)| Channels::new(id, s, r, self.latency, self.seconds_per_byte)).collect()
     }
 }
 
@@ -65,10 +81,12 @@ pub struct Channels {
     receiver: Receiver<Message>,
     buffer: Vec<Queue<Vec<u8>>>,
     sent_bytes: Vec<usize>,
+    latency: Duration,
+    seconds_per_byte: Duration
 }
 
 impl Channels {
-    pub fn new(id: usize, senders: Vec<Sender<Message>>, receiver: Receiver<Message>) -> Self {
+    pub fn new(id: usize, senders: Vec<Sender<Message>>, receiver: Receiver<Message>, latency: Duration, seconds_per_byte: Duration) -> Self {
         let sender_count = senders.len();
 
         Channels {
@@ -77,6 +95,8 @@ impl Channels {
             receiver,
             buffer: (0..sender_count - 1).map(|_| Queue::new()).collect(),
             sent_bytes: vec![0; sender_count],
+            latency,
+            seconds_per_byte
         }
     }
 
@@ -119,8 +139,7 @@ impl Channels {
             _ => self.buffer[reduced_id].remove().unwrap(),
         };
 
-        //DelayedByteIterator::new(bytes, self.latency, self.seconds_per_byte)
-        DelayedByteIterator::new(bytes, Duration::ZERO, Duration::ZERO)
+        DelayedByteIterator::new(bytes, self.latency, self.seconds_per_byte)
     }
 
     /// Sends a vector of bytes to the party with `to_id` and keeps track of the number of bits sent
