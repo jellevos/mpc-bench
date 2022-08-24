@@ -25,7 +25,7 @@ pub trait Party {
         format!("Party {}", id)
     }
 
-    fn run(&mut self, id: usize, n_parties: usize, input: Self::Input, channels: Channels, stats: &mut PartyStats) -> Self::Output;
+    fn run(&mut self, id: usize, n_parties: usize, input: Self::Input, channels: &mut Channels, stats: &mut PartyStats) -> Self::Output;
 }
 
 pub trait Protocol where Self: Debug {
@@ -47,12 +47,12 @@ pub trait Protocol where Self: Debug {
             let inputs = self.generate_inputs(n_parties);
             debug_assert_eq!(inputs.len(), n_parties);
 
-            let channels = network_description.instantiate(n_parties);
+            let mut channels = network_description.instantiate(n_parties);
             debug_assert_eq!(channels.len(), n_parties);
 
             let mut party_stats: Vec<PartyStats> = (0..n_parties).map(|_| PartyStats::new()).collect();
 
-            let outputs = parties.par_iter_mut().enumerate().zip(inputs).zip(channels).zip(party_stats.par_iter_mut()).map(|((((id, party), input), channel), s)| party.run(id, n_parties, input, channel, s)).collect();
+            let outputs = parties.par_iter_mut().enumerate().zip(inputs).zip(channels.par_iter_mut()).zip(party_stats.par_iter_mut()).map(|((((id, party), input), channel), s)| party.run(id, n_parties, input, channel, s)).collect();
 
             if !self.validate_outputs(&outputs) {
                 println!("The outputs are invalid:\n{:?} ...for these parameters:\n{:?}", outputs, self);
@@ -60,6 +60,7 @@ pub trait Protocol where Self: Debug {
             }
 
             for s in party_stats {
+                // TODO: Incorporate communication costs
                 stats.incorporate_party_stats(s);
             }
         }
@@ -78,7 +79,7 @@ mod tests {
         type Input = usize;
         type Output = usize;
 
-        fn run(&mut self, id: usize, n_parties: usize, input: Self::Input, mut channels: Channels, stats: &mut PartyStats) -> Self::Output {
+        fn run(&mut self, id: usize, n_parties: usize, input: Self::Input, channels: &mut Channels, stats: &mut PartyStats) -> Self::Output {
             println!("Hi! I am {}/{}", id, n_parties - 1);
 
             let sending_timer = stats.create_timer("sending");
