@@ -1,8 +1,31 @@
-use std::{thread::sleep, time::Duration, vec::IntoIter};
+use std::{thread::sleep, time::Duration, vec::IntoIter, sync::mpsc::{Sender, Receiver, channel}};
 
-use crate::Party;
+use queues::{IsQueue, Queue};
 
-use queues::IsQueue;
+pub trait NetworkDescription {
+    fn instantiate(&self, n_parties: usize) -> Vec<Channels>;
+}
+
+pub struct FullMesh;
+
+impl NetworkDescription for FullMesh {
+    fn instantiate(&self, n_parties: usize) -> Vec<Channels> {
+        let mut receivers = vec![];
+        let mut senders: Vec<Vec<Sender<_>>> = (0..n_parties).map(|_| vec![]).collect();
+
+        for _ in 0..n_parties {
+            let (sender, receiver) = channel();
+
+            receivers.push(receiver);
+
+            for sender_vec in senders.iter_mut() {
+                sender_vec.push(sender.clone());
+            }
+        }
+
+        receivers.into_iter().zip(senders).map(|r, s| Channels::new(s, r)).collect()
+    }
+}
 
 /// A message that is sent from the party with id `from_id` to another, containing a `Vec` of bytes.
 pub(crate) struct Message {
@@ -36,7 +59,29 @@ impl Iterator for DelayedByteIterator {
     }
 }
 
-impl Party {
+pub struct Channels {
+    senders: Vec<Sender<Message>>,
+    receiver: Receiver<Message>,
+    buffer: Vec<Queue<Vec<u8>>>,
+    sent_bytes: Vec<usize>,
+}
+
+impl Channels {
+    pub fn new(senders: Vec<Sender<Message>>, receiver: Receiver<Message>) {
+        let sender_count = senders.len();
+
+        Channels {
+            senders,
+            receiver,
+            buffer: (0..sender_count - 1).map(|_| Queue::new()).collect(),
+            sent_bytes: vec![0; sender_count],
+        }
+    }
+
+    fn add_sent_bytes(&mut self, byte_count: usize, to_id: &usize) {
+        self.sent_bytes[*to_id] += byte_count;
+    }
+
     /// Blocks until this party receives a message from the party with `from_id`. A message is a
     /// vector of bytes `Vec<u8>`. This can be achieved for example using `bincode` serialization.
     pub fn receive(&mut self, from_id: &usize) -> DelayedByteIterator {
@@ -87,7 +132,7 @@ impl Party {
             })
             .unwrap();
 
-        self.stats.add_sent_bytes(byte_count, to_id);
+        self.add_sent_bytes(byte_count, to_id);
     }
 
     /// Broadcasts a message (a vector of bytes) to all parties and keeps track of the number of
@@ -105,7 +150,7 @@ impl Party {
         }
 
         for i in 0..self.senders.len() {
-            self.stats.add_sent_bytes(byte_count, &i);
+            self.add_sent_bytes(byte_count, &i);
         }
     }
 }
