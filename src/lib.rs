@@ -218,7 +218,7 @@ mod tests {
         let duration_2 = start.elapsed();
 
         assert!(duration_2 > duration_1);
-        assert!(duration_2 > Duration::from_secs(12));
+        assert!(duration_2 > Duration::from_secs(5));
 
         stats.summarize_timings().print();
     }
