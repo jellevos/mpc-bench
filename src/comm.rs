@@ -1,8 +1,9 @@
 use std::{
+    cmp,
     sync::mpsc::{channel, Receiver, Sender},
     thread::sleep,
     time::{Duration, Instant},
-    vec::IntoIter, cmp,
+    vec::IntoIter,
 };
 
 use queues::{IsQueue, Queue};
@@ -53,7 +54,6 @@ impl NetworkDescription for FullMesh {
             }
         }
 
-        println!("LATENCY: {:?}", self.latency);
         receivers
             .into_iter()
             .enumerate()
@@ -95,7 +95,6 @@ impl Iterator for DelayedByteIterator {
         self.bytes.next().map(|byte| {
             // Delays to fit the bandwidth constraints (returns immediately when the iterator is empty)
             let dur = self.wake_time - Instant::now();
-            println!("delaying by {:?}", dur);
             sleep(dur);
 
             self.wake_time += self.seconds_per_byte;
@@ -114,7 +113,6 @@ pub struct Channels {
     latency: Duration,
     seconds_per_byte: Duration,
     next_vacancy: Instant,
-    start_time: Instant,
 }
 
 impl Channels {
@@ -137,7 +135,6 @@ impl Channels {
             latency,
             seconds_per_byte,
             next_vacancy: Instant::now(),
-            start_time: Instant::now(),
         }
     }
 
@@ -181,24 +178,17 @@ impl Channels {
             _ => self.buffer[reduced_id].remove().unwrap(),
         };
 
-        println!("{:?}: {} receives from {}", Instant::now() - self.start_time, self.id, from_id);
-
         // Sleep until the next vacancy (the previously received message is only done transferring at that moment)
-        println!("{} sleeping to vacancy: {:?}", self.id, self.next_vacancy - Instant::now());
         sleep(self.next_vacancy - Instant::now());
 
         // The message must have arrived, so make sure to sleep until then (this sleep may be skipped if the message already arrived earlier)
-        println!("{} sleeping to arrival: {:?}", self.id, arrival_time - Instant::now());
         sleep(arrival_time - Instant::now());
 
         // If we already passed the next vacancy, we can skip the iterator ahead for the time we missed between the next vacancy/arrival time and now.
         let start_time = cmp::max(self.next_vacancy, arrival_time);
-        //let excess_time = Instant::now() - cmp::max(self.next_vacancy, arrival_time);
-        //println!("{} excess_time: {:?}", self.id, excess_time);
-        
+
         // Set the next vacancy to be when this iterator finishes
         self.next_vacancy = start_time + self.seconds_per_byte * bytes.len() as u32;
-        println!("{} next_vacancy: {:?}, {:?}, {:?}", self.id, self.next_vacancy, self.next_vacancy - Instant::now(), self.next_vacancy - self.start_time);
 
         // We subtract this time from the arrival time for simplicity.
         DelayedByteIterator::new(bytes, start_time, self.seconds_per_byte)
@@ -209,8 +199,6 @@ impl Channels {
     pub fn send(&mut self, message: &[u8], to_id: &usize) {
         let byte_count = message.len();
 
-        println!("now: {:?}, arrival time: {:?}", Instant::now(), Instant::now() + self.latency);
-        println!("latency: {:?}", self.latency);
         self.senders[*to_id]
             .send(Message {
                 arrival_time: Instant::now() + self.latency,
