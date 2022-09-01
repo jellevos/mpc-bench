@@ -72,18 +72,16 @@ pub struct Message {
 
 /// Returns bytes with a delay, to simulate latency and bandwidth overhead
 pub struct DelayedByteIterator {
-    arrival_time: Instant,
-    current_byte: u32,
+    wake_time: Instant,
     bytes: IntoIter<u8>,
     seconds_per_byte: Duration,
 }
 
 impl DelayedByteIterator {
     /// Creates a DelayedByteIterator for the given `bytes`, and immediately delaying for `latency`, after which each byte is returned with `seconds_per_byte` delay.
-    pub fn new(bytes: Vec<u8>, arrival_time: Instant, seconds_per_byte: Duration) -> Self {
+    pub fn new(bytes: Vec<u8>, start_time: Instant, seconds_per_byte: Duration) -> Self {
         DelayedByteIterator {
-            arrival_time,
-            current_byte: 1,
+            wake_time: start_time + seconds_per_byte,
             bytes: bytes.into_iter(),
             seconds_per_byte,
         }
@@ -94,17 +92,15 @@ impl Iterator for DelayedByteIterator {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.bytes.next() {
-            None => None,
-            Some(byte) => {
-                let dur = (self.arrival_time + self.seconds_per_byte * self.current_byte) - Instant::now();
-                println!("delaying by {:?}", dur);
-                sleep(dur);
+        self.bytes.next().map(|byte| {
+            // Delays to fit the bandwidth constraints (returns immediately when the iterator is empty)
+            let dur = self.wake_time - Instant::now();
+            println!("delaying by {:?}", dur);
+            sleep(dur);
 
-                self.current_byte += 1;
-                Some(byte)
-            }
-        }
+            self.wake_time += self.seconds_per_byte;
+            byte
+        })
     }
 }
 
@@ -151,6 +147,7 @@ impl Channels {
 
     /// Blocks until this party receives a message from the party with `from_id`. A message is a
     /// vector of bytes `Vec<u8>`. This can be achieved for example using `bincode` serialization.
+    /// The simulated delays are planned in such a way that they mimick the given bandwidth and latency constraints in the case where messages are scheduled optimally.
     pub fn receive(&mut self, from_id: &usize) -> DelayedByteIterator {
         debug_assert_ne!(
             *from_id, self.id,
@@ -195,15 +192,16 @@ impl Channels {
         sleep(arrival_time - Instant::now());
 
         // If we already passed the next vacancy, we can skip the iterator ahead for the time we missed between the next vacancy/arrival time and now.
-        let excess_time = Instant::now() - cmp::max(self.next_vacancy, arrival_time);
-        println!("{} excess_time: {:?}", self.id, excess_time);
+        let start_time = cmp::max(self.next_vacancy, arrival_time);
+        //let excess_time = Instant::now() - cmp::max(self.next_vacancy, arrival_time);
+        //println!("{} excess_time: {:?}", self.id, excess_time);
         
         // Set the next vacancy to be when this iterator finishes
-        self.next_vacancy = Instant::now() + self.seconds_per_byte * bytes.len() as u32 - excess_time;
+        self.next_vacancy = start_time + self.seconds_per_byte * bytes.len() as u32;
         println!("{} next_vacancy: {:?}, {:?}, {:?}", self.id, self.next_vacancy, self.next_vacancy - Instant::now(), self.next_vacancy - self.start_time);
 
         // We subtract this time from the arrival time for simplicity.
-        DelayedByteIterator::new(bytes, Instant::now() - excess_time, self.seconds_per_byte)
+        DelayedByteIterator::new(bytes, start_time, self.seconds_per_byte)
     }
 
     /// Sends a vector of bytes to the party with `to_id` and keeps track of the number of bits sent
