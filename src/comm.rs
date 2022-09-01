@@ -2,7 +2,7 @@ use std::{
     sync::mpsc::{channel, Receiver, Sender},
     thread::sleep,
     time::{Duration, Instant},
-    vec::IntoIter,
+    vec::IntoIter, cmp,
 };
 
 use queues::{IsQueue, Queue};
@@ -53,6 +53,7 @@ impl NetworkDescription for FullMesh {
             }
         }
 
+        println!("LATENCY: {:?}", self.latency);
         receivers
             .into_iter()
             .enumerate()
@@ -82,7 +83,7 @@ impl DelayedByteIterator {
     pub fn new(bytes: Vec<u8>, arrival_time: Instant, seconds_per_byte: Duration) -> Self {
         DelayedByteIterator {
             arrival_time,
-            current_byte: 0,
+            current_byte: 1,
             bytes: bytes.into_iter(),
             seconds_per_byte,
         }
@@ -93,12 +94,17 @@ impl Iterator for DelayedByteIterator {
     type Item = u8;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // FIXME: Now, bandwidth runs in parallel but it should be limited
-        let dur = (self.arrival_time + self.seconds_per_byte * self.current_byte) - Instant::now();
-        sleep(dur);
+        match self.bytes.next() {
+            None => None,
+            Some(byte) => {
+                let dur = (self.arrival_time + self.seconds_per_byte * self.current_byte) - Instant::now();
+                println!("delaying by {:?}", dur);
+                sleep(dur);
 
-        self.current_byte += 1;
-        self.bytes.next()
+                self.current_byte += 1;
+                Some(byte)
+            }
+        }
     }
 }
 
@@ -111,6 +117,8 @@ pub struct Channels {
     sent_bytes: Vec<usize>,
     latency: Duration,
     seconds_per_byte: Duration,
+    next_vacancy: Instant,
+    start_time: Instant,
 }
 
 impl Channels {
@@ -132,6 +140,8 @@ impl Channels {
             sent_bytes: vec![0; sender_count],
             latency,
             seconds_per_byte,
+            next_vacancy: Instant::now(),
+            start_time: Instant::now(),
         }
     }
 
@@ -174,8 +184,26 @@ impl Channels {
             _ => self.buffer[reduced_id].remove().unwrap(),
         };
 
+        println!("{:?}: {} receives from {}", Instant::now() - self.start_time, self.id, from_id);
+
+        // Sleep until the next vacancy (the previously received message is only done transferring at that moment)
+        println!("{} sleeping to vacancy: {:?}", self.id, self.next_vacancy - Instant::now());
+        sleep(self.next_vacancy - Instant::now());
+
+        // The message must have arrived, so make sure to sleep until then (this sleep may be skipped if the message already arrived earlier)
+        println!("{} sleeping to arrival: {:?}", self.id, arrival_time - Instant::now());
+        sleep(arrival_time - Instant::now());
+
+        // If we already passed the next vacancy, we can skip the iterator ahead for the time we missed between the next vacancy/arrival time and now.
+        let excess_time = Instant::now() - cmp::max(self.next_vacancy, arrival_time);
+        println!("{} excess_time: {:?}", self.id, excess_time);
         
-        DelayedByteIterator::new(bytes, arrival_time, self.seconds_per_byte)
+        // Set the next vacancy to be when this iterator finishes
+        self.next_vacancy = Instant::now() + self.seconds_per_byte * bytes.len() as u32 - excess_time;
+        println!("{} next_vacancy: {:?}, {:?}, {:?}", self.id, self.next_vacancy, self.next_vacancy - Instant::now(), self.next_vacancy - self.start_time);
+
+        // We subtract this time from the arrival time for simplicity.
+        DelayedByteIterator::new(bytes, Instant::now() - excess_time, self.seconds_per_byte)
     }
 
     /// Sends a vector of bytes to the party with `to_id` and keeps track of the number of bits sent
@@ -183,9 +211,11 @@ impl Channels {
     pub fn send(&mut self, message: &[u8], to_id: &usize) {
         let byte_count = message.len();
 
+        println!("now: {:?}, arrival time: {:?}", Instant::now(), Instant::now() + self.latency);
+        println!("latency: {:?}", self.latency);
         self.senders[*to_id]
             .send(Message {
-                arrival_time: Instant::now() + self.latency, // FIXME: This assumes self.latency is the same as the other's latency
+                arrival_time: Instant::now() + self.latency,
                 from_id: self.id,
                 contents: message.to_vec(),
             })
