@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
-    time::{Duration, Instant}, fs::File,
+    fs::File,
+    time::{Duration, Instant},
 };
 
 use stats::{mean, stddev};
@@ -71,18 +72,27 @@ impl AggregatedStats {
     }
 
     // TODO: These methods have many underlying assumptions and are not ergonomic.
+    /// Outputs one party's timings to a csv named `csv_filename`.
     pub fn output_party_csv(&self, party_id: usize, csv_filename: &str) {
         // Open CSV file
-        let mut writer = File::create(csv_filename).unwrap();
+        let writer = File::create(csv_filename).unwrap();
         let mut csv_writer = csv::Writer::from_writer(writer);
 
         // Write header
-        let headers: Vec<String> = self.timings[0][party_id].measured_durations.iter().map(|(name, _)| name.clone()).collect();
-        csv_writer.write_record(&headers);
+        let headers: Vec<String> = self.timings[0][party_id]
+            .measured_durations
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect();
+        csv_writer.write_record(&headers).unwrap();
 
         for party_timings in &self.timings {
-            let durations: Vec<String> = party_timings[party_id].measured_durations.iter().map(|(_, dur)| dur.as_micros().to_string()).collect();
-            csv_writer.write_record(&durations);
+            let durations: Vec<String> = party_timings[party_id]
+                .measured_durations
+                .iter()
+                .map(|(_, dur)| dur.as_micros().to_string())
+                .collect();
+            csv_writer.write_record(&durations).unwrap();
         }
 
         csv_writer.flush().unwrap();
