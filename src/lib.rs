@@ -104,6 +104,7 @@ where
                 .collect();
 
             if !self.validate_outputs(&inputs, &outputs) {
+                #[cfg(feature = "verbose")]
                 println!(
                     "The outputs are invalid:\n{:?} ...for these parameters:\n{:?}",
                     outputs, self
