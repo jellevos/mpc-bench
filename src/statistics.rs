@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, fs::File,
 };
 
 use stats::{mean, stddev};
@@ -68,6 +68,24 @@ impl AggregatedStats {
     /// Incorporates each party's resulting statistics into this aggregate.
     pub fn incorporate_party_stats(&mut self, party_stats: Vec<Timings>) {
         self.timings.push(party_stats);
+    }
+
+    // TODO: These methods have many underlying assumptions and are not ergonomic.
+    pub fn output_party_csv(&self, party_id: usize, csv_filename: &str) {
+        // Open CSV file
+        let mut writer = File::create(csv_filename).unwrap();
+        let mut csv_writer = csv::Writer::from_writer(writer);
+
+        // Write header
+        let headers: Vec<String> = self.timings[0][party_id].measured_durations.iter().map(|(name, _)| name.clone()).collect();
+        csv_writer.write_record(&headers);
+
+        for party_timings in &self.timings {
+            let durations: Vec<String> = party_timings[party_id].measured_durations.iter().map(|(_, dur)| dur.as_micros().to_string()).collect();
+            csv_writer.write_record(&durations);
+        }
+
+        csv_writer.flush().unwrap();
     }
 
     /// Summarizes the timings of all parties.

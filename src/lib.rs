@@ -96,7 +96,10 @@ where
                 .zip(channels.par_iter_mut())
                 .zip(party_timings.par_iter_mut())
                 .map(|((((id, party), input), channel), s)| {
-                    party.run(id, n_parties, input, channel, s)
+                    let total_timer = s.create_timer("Total");
+                    let output = party.run(id, n_parties, input, channel, s);
+                    s.stop_timer(total_timer);
+                    output
                 })
                 .collect();
 
@@ -201,6 +204,8 @@ mod tests {
         println!("stats: {:?}", stats);
         // FIXME: All rows are aggregated instead of party-by-party
         stats.summarize_timings().print();
+
+        //stats.output_party_csv(3, "test.csv");
     }
 
     #[test]
