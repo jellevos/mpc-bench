@@ -112,7 +112,6 @@ where
             }
 
             // TODO: Incorporate communication costs
-            println!("{:?}", party_timings);
             stats.incorporate_party_stats(party_timings);
         }
 
