@@ -30,7 +30,7 @@ impl FullMesh {
         }
     }
 
-    /// Construct a FullMesh network description with the specified `latency` and bandwidth constraints (maximum `bytes_per_second`).
+    /// Construct a FullMesh network description with the specified `latency` and throughput (maximum `bytes_per_second`).
     pub fn new_with_overhead(latency: Duration, bytes_per_second: f64) -> Self {
         FullMesh {
             latency,
@@ -70,7 +70,7 @@ pub struct Message {
     contents: Vec<u8>,
 }
 
-/// Returns bytes with a delay, to simulate latency and bandwidth overhead
+/// Returns bytes with a delay, to simulate latency and throughput
 pub struct DelayedByteIterator {
     wake_time: Instant,
     bytes: IntoIter<u8>,
@@ -78,7 +78,7 @@ pub struct DelayedByteIterator {
 }
 
 impl DelayedByteIterator {
-    /// Creates a DelayedByteIterator for the given `bytes`, and immediately delaying for `latency`, after which each byte is returned with `seconds_per_byte` delay.
+    /// Creates a DelayedByteIterator for the given `bytes`. Each byte is returned with `seconds_per_byte` delay.
     pub fn new(bytes: Vec<u8>, start_time: Instant, seconds_per_byte: Duration) -> Self {
         DelayedByteIterator {
             wake_time: start_time + seconds_per_byte,
@@ -103,7 +103,7 @@ impl Iterator for DelayedByteIterator {
     }
 }
 
-/// The communication channels for one party. These also keep track of how many bytes are sent.
+/// The communication channels for one party. These also keep track of how many bytes are sent. Channels are unidirectional.
 pub struct Channels {
     id: usize,
     senders: Vec<Sender<Message>>,
@@ -144,7 +144,7 @@ impl Channels {
 
     /// Blocks until this party receives a message from the party with `from_id`. A message is a
     /// vector of bytes `Vec<u8>`. This can be achieved for example using `bincode` serialization.
-    /// The simulated delays are planned in such a way that they mimick the given bandwidth and latency constraints in the case where messages are scheduled optimally.
+    /// The simulated delays are planned in such a way that they mimick the given throughput and latency constraints in the case where messages are scheduled first-in-first-out.
     pub fn receive(&mut self, from_id: &usize) -> DelayedByteIterator {
         debug_assert_ne!(
             *from_id, self.id,
